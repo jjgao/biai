@@ -93,6 +93,10 @@ interface ColumnMetadata {
   suggested_chart: string
   display_priority: number
   is_hidden: boolean
+  // Temporal filtering fields
+  temporal_role?: 'none' | 'start_date' | 'stop_date' | 'duration'
+  temporal_paired_column?: string
+  temporal_unit?: 'days' | 'months' | 'years'
 }
 
 interface CategoryCount {

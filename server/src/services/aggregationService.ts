@@ -51,6 +51,7 @@ export interface Filter {
   // Simple filter (leaf node)
   column?: string
   operator?: 'eq' | 'in' | 'gt' | 'lt' | 'gte' | 'lte' | 'between'
+    | 'temporal_before' | 'temporal_after' | 'temporal_within' | 'temporal_overlaps' | 'temporal_duration'
   value?: any
 
   // Logical operators (internal nodes)
@@ -60,6 +61,11 @@ export interface Filter {
 
   // Cross-table metadata (optional)
   tableName?: string
+
+  // Temporal-specific fields
+  temporal_reference_column?: string
+  temporal_reference_table?: string
+  temporal_window_days?: number
 }
 
 export interface TableRelationship {
@@ -704,9 +710,88 @@ class AggregationService {
         const [start, end] = filter.value.map(v => this.ensureNumeric(v, 'between'))
         return `${col} BETWEEN ${start} AND ${end}`
 
+      case 'temporal_before':
+        return this.buildTemporalBeforeCondition(filter, alias)
+
+      case 'temporal_after':
+        return this.buildTemporalAfterCondition(filter, alias)
+
+      case 'temporal_duration':
+        return this.buildTemporalDurationCondition(filter, alias)
+
+      case 'temporal_within':
+        // To be implemented in Phase 4
+        throw new Error('temporal_within operator not yet implemented')
+
+      case 'temporal_overlaps':
+        // To be implemented in Phase 4
+        throw new Error('temporal_overlaps operator not yet implemented')
+
       default:
         return ''
     }
+  }
+
+  /**
+   * Build SQL condition for temporal_before operator
+   * Event A occurs before event B starts
+   */
+  private buildTemporalBeforeCondition(filter: Filter, alias?: string | null): string {
+    if (!filter.column || !filter.temporal_reference_column) {
+      throw new Error('temporal_before requires column and temporal_reference_column')
+    }
+
+    const thisCol =
+      alias === null
+        ? filter.column
+        : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
+    const refCol = filter.temporal_reference_column
+
+    // NULL handling: exclude rows with NULL temporal columns
+    return `(${thisCol} IS NOT NULL AND ${thisCol} < ${refCol})`
+  }
+
+  /**
+   * Build SQL condition for temporal_after operator
+   * Event A occurs after event B ends
+   */
+  private buildTemporalAfterCondition(filter: Filter, alias?: string | null): string {
+    if (!filter.column || !filter.temporal_reference_column) {
+      throw new Error('temporal_after requires column and temporal_reference_column')
+    }
+
+    const thisCol =
+      alias === null
+        ? filter.column
+        : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
+    const refCol = filter.temporal_reference_column
+
+    // NULL handling: exclude rows with NULL temporal columns
+    return `(${thisCol} IS NOT NULL AND ${thisCol} > ${refCol})`
+  }
+
+  /**
+   * Build SQL condition for temporal_duration operator
+   * Event duration meets threshold (stop - start >= value)
+   */
+  private buildTemporalDurationCondition(filter: Filter, alias?: string | null): string {
+    if (!filter.column || !filter.temporal_reference_column || filter.value === undefined) {
+      throw new Error('temporal_duration requires column (start), temporal_reference_column (stop), and value (threshold)')
+    }
+
+    const startCol =
+      alias === null
+        ? filter.column
+        : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
+    const stopCol =
+      alias === null
+        ? filter.temporal_reference_column
+        : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
+
+    const threshold = this.ensureNumeric(filter.value, 'temporal_duration')
+
+    // NULL handling: exclude rows with NULL temporal columns
+    return `(${startCol} IS NOT NULL AND ${stopCol} IS NOT NULL AND (${stopCol} - ${startCol}) >= ${threshold})`
   }
 
   private getFilterTableName(filter: Filter): string | undefined {
