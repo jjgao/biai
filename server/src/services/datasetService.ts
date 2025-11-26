@@ -1018,7 +1018,10 @@ export class DatasetService {
           max_value,
           suggested_chart,
           display_priority,
-          is_hidden
+          is_hidden,
+          temporal_role,
+          temporal_paired_column,
+          temporal_unit
         FROM biai.dataset_columns
         WHERE dataset_id = {datasetId:String}
           AND table_id = {tableId:String}
@@ -1046,6 +1049,9 @@ export class DatasetService {
       suggested_chart: string | null
       display_priority: number | null
       is_hidden: number | boolean
+      temporal_role: string
+      temporal_paired_column: string | null
+      temporal_unit: string
     }>()
 
     return rows.map((row, index) => ({
@@ -1064,7 +1070,10 @@ export class DatasetService {
       max_value: row.max_value ?? null,
       suggested_chart: row.suggested_chart || 'bar',
       display_priority: row.display_priority ?? 0,
-      is_hidden: Boolean(row.is_hidden)
+      is_hidden: Boolean(row.is_hidden),
+      temporal_role: row.temporal_role || 'none',
+      temporal_paired_column: row.temporal_paired_column ?? null,
+      temporal_unit: row.temporal_unit || 'days'
     }))
   }
 
