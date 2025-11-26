@@ -842,6 +842,15 @@ class AggregationService {
       return null // Not a cross-table filter
     }
 
+    // IMPORTANT: Cross-table temporal filters only apply to the table they were created on
+    // If the filter has a tableName property, it was created on that specific table
+    // and should only be applied to that table, not propagated to others
+    const filterTableName = (filter as any).tableName
+    if (filterTableName && filterTableName !== currentTableName) {
+      // This filter was created on a different table, skip it
+      return null
+    }
+
     // Find table metadata
     const currentTable = allTablesMetadata.find(t => t.table_name === currentTableName)
     const refTable = allTablesMetadata.find(t => t.table_name === refTableName)
