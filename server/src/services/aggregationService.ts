@@ -886,6 +886,9 @@ class AggregationService {
         FROM ${fromClause}
         WHERE 1=1 ${whereClause}
       `
+      if (hasTemporalFilter(filters)) {
+        console.log('Count query:', countQuery)
+      }
       const countResult = await clickhouseClient.query({
         query: countQuery,
         format: 'JSONEachRow'
