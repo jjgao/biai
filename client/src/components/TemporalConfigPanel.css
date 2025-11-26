@@ -1,0 +1,204 @@
+.temporal-config-panel {
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+}
+
+.panel-header {
+  margin-bottom: 24px;
+}
+
+.panel-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.help-text {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.error-message {
+  padding: 12px 16px;
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 6px;
+  color: #c00;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.close-error {
+  background: none;
+  border: none;
+  color: #c00;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+}
+
+.close-error:hover {
+  color: #900;
+}
+
+.columns-table {
+  overflow-x: auto;
+}
+
+.columns-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+}
+
+.columns-table thead {
+  background: #f5f5f5;
+}
+
+.columns-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.columns-table tbody tr {
+  border-bottom: 1px solid #e0e0e0;
+  transition: background-color 0.15s;
+}
+
+.columns-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.columns-table tbody tr:hover {
+  background: #fafafa;
+}
+
+.columns-table tbody tr.temporal-active {
+  background: #f0f8ff;
+}
+
+.columns-table tbody tr.temporal-active:hover {
+  background: #e6f2ff;
+}
+
+.columns-table td {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #333;
+}
+
+.column-name {
+  font-weight: 500;
+  display: block;
+}
+
+.display-name {
+  font-size: 12px;
+  color: #888;
+  display: block;
+  margin-top: 2px;
+}
+
+.role-select,
+.paired-select,
+.unit-select {
+  padding: 6px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  background: white;
+  color: #333;
+  min-width: 120px;
+  cursor: pointer;
+}
+
+.role-select:hover,
+.paired-select:hover,
+.unit-select:hover {
+  border-color: #999;
+}
+
+.role-select:focus,
+.paired-select:focus,
+.unit-select:focus {
+  outline: none;
+  border-color: #4a90e2;
+  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+}
+
+.role-select:disabled,
+.paired-select:disabled,
+.unit-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.disabled-field {
+  color: #aaa;
+  font-style: italic;
+}
+
+.save-button {
+  padding: 6px 16px;
+  background: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.save-button:hover:not(:disabled) {
+  background: #357abd;
+}
+
+.save-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.no-columns-message {
+  padding: 40px 20px;
+  text-align: center;
+  color: #888;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .columns-table {
+    font-size: 13px;
+  }
+
+  .columns-table th,
+  .columns-table td {
+    padding: 10px 12px;
+  }
+
+  .role-select,
+  .paired-select,
+  .unit-select {
+    min-width: 100px;
+    font-size: 13px;
+  }
+}
