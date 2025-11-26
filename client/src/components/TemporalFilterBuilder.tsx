@@ -18,7 +18,7 @@ interface TemporalFilterBuilderProps {
   currentTable: string
   currentColumn: ColumnMetadata
   allTables: Table[]
-  allColumns: ColumnMetadata[]
+  columnsByTable: Record<string, ColumnMetadata[]>
   onCreateFilter: (filter: any) => void
   onClose: () => void
 }
@@ -27,7 +27,7 @@ export default function TemporalFilterBuilder({
   currentTable,
   currentColumn,
   allTables,
-  allColumns,
+  columnsByTable,
   onCreateFilter,
   onClose
 }: TemporalFilterBuilderProps) {
@@ -35,14 +35,13 @@ export default function TemporalFilterBuilder({
   const [referenceTable, setReferenceTable] = useState<string>(currentTable)
   const [referenceColumn, setReferenceColumn] = useState<string>('')
 
-  // Get temporal columns from all tables
+  // Get temporal columns from a specific table
   const getTemporalColumns = (tableName: string) => {
-    // For now, return all columns from current table
-    // In full implementation, this would filter by table
-    return allColumns.filter(col =>
+    const tableColumns = columnsByTable[tableName] || []
+    return tableColumns.filter(col =>
       col.temporal_role &&
       col.temporal_role !== 'none' &&
-      col.column_name !== currentColumn.column_name
+      !(col.column_name === currentColumn.column_name && tableName === currentTable)
     )
   }
 

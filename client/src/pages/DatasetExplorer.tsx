@@ -6437,7 +6437,7 @@ const renderNumericFilterMenu = (
                 name: t.name,
                 displayName: t.display_name || t.name
               }))}
-              allColumns={Object.values(columnMetadata).flat()}
+              columnsByTable={columnMetadata}
               onCreateFilter={(filter) => {
                 setFilters(prev => [...prev, filter])
                 setTemporalFilterBuilder(null)
