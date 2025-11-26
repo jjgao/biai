@@ -745,10 +745,16 @@ class AggregationService {
       alias === null
         ? filter.column
         : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
-    const refCol = filter.temporal_reference_column
+
+    // For within-table comparisons, use the same alias for reference column
+    // For cross-table comparisons, this would need join logic (Phase 4)
+    const refCol =
+      alias === null
+        ? filter.temporal_reference_column
+        : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
 
     // NULL handling: exclude rows with NULL temporal columns
-    return `(${thisCol} IS NOT NULL AND ${thisCol} < ${refCol})`
+    return `(${thisCol} IS NOT NULL AND ${refCol} IS NOT NULL AND ${thisCol} < ${refCol})`
   }
 
   /**
@@ -764,10 +770,16 @@ class AggregationService {
       alias === null
         ? filter.column
         : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
-    const refCol = filter.temporal_reference_column
+
+    // For within-table comparisons, use the same alias for reference column
+    // For cross-table comparisons, this would need join logic (Phase 4)
+    const refCol =
+      alias === null
+        ? filter.temporal_reference_column
+        : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
 
     // NULL handling: exclude rows with NULL temporal columns
-    return `(${thisCol} IS NOT NULL AND ${thisCol} > ${refCol})`
+    return `(${thisCol} IS NOT NULL AND ${refCol} IS NOT NULL AND ${thisCol} > ${refCol})`
   }
 
   /**
