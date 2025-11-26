@@ -515,6 +515,12 @@ class AggregationService {
       const aliasOverride = targetTable ? tableAliasResolver?.(targetTable) : undefined
       const isCrossTable = !aliasOverride && targetTable && currentTableName && allTablesMetadata && targetTable !== currentTableName
 
+      // Check for cross-table temporal filter
+      const isCrossTableTemporal = currentTableName && allTablesMetadata &&
+        filter.operator?.startsWith('temporal_') &&
+        filter.temporal_reference_table &&
+        filter.temporal_reference_table !== currentTableName
+
       // Special handling for NOT filters with parent-table counting
       // When counting by parent with a NOT filter on a local (child) column,
       // we need parent-level exclusion semantics, not row-level NOT
@@ -522,7 +528,17 @@ class AggregationService {
       const isParentCounting = metricContext?.type === 'parent'
       const isLocalFilter = aliasOverride === BASE_TABLE_ALIAS || (!aliasOverride && !isCrossTable)
 
-      if (hasNot && isParentCounting && isLocalFilter && metricContext && currentTableName && currentTableClickhouseName) {
+      if (isCrossTableTemporal) {
+        // This is a cross-table temporal filter - build EXISTS subquery
+        const subquery = this.buildCrossTableTemporalSubquery(
+          currentTableName,
+          filter,
+          allTablesMetadata
+        )
+        if (subquery) {
+          crossTableConditions.push(subquery)
+        }
+      } else if (hasNot && isParentCounting && isLocalFilter && metricContext && currentTableName && currentTableClickhouseName) {
         // Use parent-level exclusion: exclude parents where ANY child matches positive condition
         const subquery = this.buildParentExclusionSubquery(filter, currentTableName, metricContext, currentTableClickhouseName)
         if (subquery) {
@@ -806,6 +822,99 @@ class AggregationService {
     return `(${startCol} IS NOT NULL AND ${stopCol} IS NOT NULL AND (${stopCol} - ${startCol}) >= ${threshold})`
   }
 
+  /**
+   * Build EXISTS subquery for cross-table temporal filtering
+   * Compares temporal columns between related tables via patient_id join
+   */
+  private buildCrossTableTemporalSubquery(
+    currentTableName: string,
+    filter: Filter,
+    allTablesMetadata: TableMetadata[]
+  ): string | null {
+    // Validate this is a temporal filter
+    if (!filter.operator?.startsWith('temporal_')) {
+      return null
+    }
+
+    // Validate we have both table names
+    const refTableName = filter.temporal_reference_table
+    if (!refTableName || refTableName === currentTableName) {
+      return null // Not a cross-table filter
+    }
+
+    // Find table metadata
+    const currentTable = allTablesMetadata.find(t => t.table_name === currentTableName)
+    const refTable = allTablesMetadata.find(t => t.table_name === refTableName)
+
+    if (!currentTable || !refTable) {
+      console.warn(`Cross-table temporal filter references unknown table: ${refTableName}`)
+      return null
+    }
+
+    // Find relationship path
+    const path = this.findRelationshipPath(currentTableName, refTableName, allTablesMetadata)
+    if (!path || path.length === 0) {
+      console.warn(`No relationship path found between ${currentTableName} and ${refTableName}`)
+      return null
+    }
+
+    // Get qualified table name for reference table
+    const qualifiedRefTable = this.qualifyTableName(refTable.clickhouse_table_name)
+
+    // Build the temporal condition
+    const thisCol = filter.column!
+    const refCol = filter.temporal_reference_column!
+
+    let temporalCondition = ''
+    if (filter.operator === 'temporal_before') {
+      temporalCondition = `${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND base_table.${thisCol} < ref_table.${refCol}`
+    } else if (filter.operator === 'temporal_after') {
+      temporalCondition = `${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND base_table.${thisCol} > ref_table.${refCol}`
+    } else {
+      // Other temporal operators not yet supported for cross-table
+      return null
+    }
+
+    // Build JOIN conditions along the relationship path
+    const joinConditions: string[] = []
+
+    if (path.length === 1) {
+      // Direct single-hop relationship
+      const step = path[0]
+      if (step.direction === 'forward') {
+        // current_table.fk = ref_table.refCol
+        joinConditions.push(`base_table.${step.fk} = ref_table.${step.refCol}`)
+      } else {
+        // current_table.refCol = ref_table.fk
+        joinConditions.push(`base_table.${step.refCol} = ref_table.${step.fk}`)
+      }
+    } else if (path.length === 2 && path[0].direction === 'forward' && path[1].direction === 'backward') {
+      // Common case: sibling tables through parent (e.g., surgery -> patient <- treatment)
+      // Both tables have the same foreign key to the same parent
+      // Optimize: join directly via shared foreign key
+      if (path[0].fk === path[1].fk && path[0].refCol === path[1].refCol) {
+        // surgery.patient_id = treatment.patient_id
+        joinConditions.push(`base_table.${path[0].fk} = ref_table.${path[1].fk}`)
+      } else {
+        console.warn(`Unsupported 2-hop pattern: ${currentTableName} -> ${refTableName}`)
+        return null
+      }
+    } else {
+      // Multi-hop not yet supported
+      console.warn(`Multi-hop temporal relationships not yet supported: ${currentTableName} -> ${refTableName} (${path.length} hops)`)
+      return null
+    }
+
+    // Build EXISTS subquery
+    const exists = `EXISTS (
+      SELECT 1 FROM ${qualifiedRefTable} AS ref_table
+      WHERE ${joinConditions.join(' AND ')}
+        AND ${temporalCondition}
+    )`
+
+    return exists
+  }
+
   private getFilterTableName(filter: Filter): string | undefined {
     if ((filter as any).tableName) {
       return (filter as any).tableName
@@ -886,9 +995,6 @@ class AggregationService {
         FROM ${fromClause}
         WHERE 1=1 ${whereClause}
       `
-      if (hasTemporalFilter(filters)) {
-        console.log('Count query:', countQuery)
-      }
       const countResult = await clickhouseClient.query({
         query: countQuery,
         format: 'JSONEachRow'

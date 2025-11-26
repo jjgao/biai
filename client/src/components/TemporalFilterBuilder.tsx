@@ -104,7 +104,6 @@ export default function TemporalFilterBuilder({
           </div>
         </div>
 
-        {/* Phase 4: Cross-table temporal filtering - coming soon
         <div className="form-group">
           <label>Reference Table</label>
           <select
@@ -121,11 +120,15 @@ export default function TemporalFilterBuilder({
               </option>
             ))}
           </select>
+          <div className="help-text">
+            {referenceTable === currentTable
+              ? 'Same table (compares columns within each row)'
+              : 'Cross-table (requires join via patient_id)'}
+          </div>
         </div>
-        */}
 
         <div className="form-group">
-          <label>Reference Column (within same table)</label>
+          <label>Reference Column</label>
           <select
             value={referenceColumn}
             onChange={e => setReferenceColumn(e.target.value)}
@@ -138,12 +141,9 @@ export default function TemporalFilterBuilder({
               </option>
             ))}
           </select>
-          <div className="help-text">
-            Compare events within the same table row (e.g., start_date before stop_date)
-          </div>
           {temporalColumns.length === 0 && (
             <div className="warning-text">
-              No other temporal columns found in this table. Configure temporal columns in Dataset Management first.
+              No temporal columns found in {referenceTable}. Configure temporal columns in Dataset Management first.
             </div>
           )}
         </div>
