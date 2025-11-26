@@ -116,6 +116,28 @@
   margin-top: 2px;
 }
 
+.suggested-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 12px;
+  cursor: help;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
 .role-select,
 .paired-select,
 .unit-select {
@@ -129,10 +151,19 @@
   cursor: pointer;
 }
 
+.role-select.suggested {
+  border: 2px solid #667eea;
+  background: #f8f9ff;
+}
+
 .role-select:hover,
 .paired-select:hover,
 .unit-select:hover {
   border-color: #999;
+}
+
+.role-select.suggested:hover {
+  border-color: #667eea;
 }
 
 .role-select:focus,

@@ -21,17 +21,89 @@ interface TemporalConfig {
   temporalRole: 'none' | 'start_date' | 'stop_date' | 'duration'
   temporalPairedColumn: string | null
   temporalUnit: 'days' | 'months' | 'years'
+  displayType?: string
+}
+
+// Auto-detect temporal role based on column name patterns
+const detectTemporalRole = (columnName: string, currentRole?: string): 'none' | 'start_date' | 'stop_date' | 'duration' => {
+  if (currentRole && currentRole !== 'none') {
+    return currentRole as any
+  }
+
+  const nameLower = columnName.toLowerCase()
+
+  // Check for start date patterns
+  if (
+    nameLower.includes('start_date') ||
+    nameLower.includes('start_day') ||
+    nameLower.includes('begin_date') ||
+    nameLower.includes('begin_day') ||
+    nameLower.endsWith('_start') ||
+    nameLower.startsWith('start_') ||
+    nameLower === 'start'
+  ) {
+    return 'start_date'
+  }
+
+  // Check for stop date patterns
+  if (
+    nameLower.includes('stop_date') ||
+    nameLower.includes('stop_day') ||
+    nameLower.includes('end_date') ||
+    nameLower.includes('end_day') ||
+    nameLower.endsWith('_stop') ||
+    nameLower.endsWith('_end') ||
+    nameLower.startsWith('stop_') ||
+    nameLower.startsWith('end_') ||
+    nameLower === 'stop' ||
+    nameLower === 'end'
+  ) {
+    return 'stop_date'
+  }
+
+  // Check for duration patterns
+  if (
+    nameLower.includes('duration') ||
+    nameLower.includes('length') ||
+    nameLower.includes('period')
+  ) {
+    return 'duration'
+  }
+
+  return 'none'
+}
+
+// Determine appropriate display_type based on column type and temporal role
+const getDisplayTypeForTemporal = (columnType: string, temporalRole: string): string => {
+  if (temporalRole === 'none') {
+    return 'auto'
+  }
+
+  // If column type is Date/DateTime, use datetime display
+  if (columnType.includes('Date')) {
+    return 'datetime'
+  }
+
+  // For numeric types (Int*, Float*), use numeric display
+  if (columnType.includes('Int') || columnType.includes('Float')) {
+    return 'numeric'
+  }
+
+  return 'numeric' // Default for temporal columns
 }
 
 export default function TemporalConfigPanel({ datasetId, tableId, columns, onUpdate }: TemporalConfigPanelProps) {
   const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const updateColumnTemporal = async (columnName: string, config: TemporalConfig) => {
+  const updateColumnTemporal = async (columnName: string, columnType: string, config: TemporalConfig) => {
     setSaving(columnName)
     setError(null)
 
     try {
+      // Auto-determine display_type based on column type and temporal role
+      const displayType = getDisplayTypeForTemporal(columnType, config.temporalRole)
+
       const response = await fetch(
         `/api/datasets/${datasetId}/tables/${tableId}/columns/${encodeURIComponent(columnName)}`,
         {
@@ -39,7 +111,10 @@ export default function TemporalConfigPanel({ datasetId, tableId, columns, onUpd
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(config)
+          body: JSON.stringify({
+            ...config,
+            displayType
+          })
         }
       )
 
@@ -113,7 +188,9 @@ export default function TemporalConfigPanel({ datasetId, tableId, columns, onUpd
           </thead>
           <tbody>
             {potentialTemporalColumns.map(column => {
-              const [tempRole, setTempRole] = useState(column.temporal_role || 'none')
+              // Auto-detect temporal role if not already set
+              const detectedRole = detectTemporalRole(column.column_name, column.temporal_role)
+              const [tempRole, setTempRole] = useState(detectedRole)
               const [tempPairedColumn, setTempPairedColumn] = useState(column.temporal_paired_column || '')
               const [tempUnit, setTempUnit] = useState(column.temporal_unit || 'days')
 
@@ -123,7 +200,7 @@ export default function TemporalConfigPanel({ datasetId, tableId, columns, onUpd
                 tempUnit !== (column.temporal_unit || 'days')
 
               const handleSave = () => {
-                updateColumnTemporal(column.column_name, {
+                updateColumnTemporal(column.column_name, column.column_type, {
                   temporalRole: tempRole,
                   temporalPairedColumn: tempPairedColumn || null,
                   temporalUnit: tempUnit
@@ -132,12 +209,18 @@ export default function TemporalConfigPanel({ datasetId, tableId, columns, onUpd
 
               const isSaving = saving === column.column_name
               const pairableColumns = getPairableColumns(column.column_name, tempRole)
+              const suggestedRole = detectedRole !== 'none' && detectedRole !== column.temporal_role
 
               return (
                 <tr key={column.column_name} className={tempRole !== 'none' ? 'temporal-active' : ''}>
                   <td>
                     <span className="column-name">{column.column_name}</span>
                     <span className="display-name">{column.display_name}</span>
+                    {suggestedRole && (
+                      <span className="suggested-badge" title="Auto-detected based on column name">
+                        ✨ Suggested
+                      </span>
+                    )}
                   </td>
                   <td>{column.column_type}</td>
                   <td>
@@ -145,7 +228,7 @@ export default function TemporalConfigPanel({ datasetId, tableId, columns, onUpd
                       value={tempRole}
                       onChange={e => setTempRole(e.target.value as any)}
                       disabled={isSaving}
-                      className="role-select"
+                      className={`role-select ${suggestedRole ? 'suggested' : ''}`}
                     >
                       <option value="none">None</option>
                       <option value="start_date">Start Date</option>
