@@ -749,6 +749,25 @@ class AggregationService {
   }
 
   /**
+   * Helper method to wrap stop_date columns with COALESCE
+   * When stop_date is NULL, treat it as equal to start_date (same-day event)
+   * This is particularly useful for instantaneous events like surgeries
+   */
+  private wrapStopDateColumn(columnExpr: string, columnName: string): string {
+    if (columnName === 'stop_date') {
+      // Extract table alias from columnExpr (e.g., "base_table.stop_date" -> "base_table")
+      const parts = columnExpr.split('.')
+      if (parts.length === 2) {
+        const tableAlias = parts[0]
+        return `COALESCE(${tableAlias}.stop_date, ${tableAlias}.start_date)`
+      }
+      // If no alias, assume both start_date and stop_date are in same context
+      return `COALESCE(stop_date, start_date)`
+    }
+    return columnExpr
+  }
+
+  /**
    * Build SQL condition for temporal_before operator
    * Event A occurs before event B starts
    */
@@ -769,8 +788,12 @@ class AggregationService {
         ? filter.temporal_reference_column
         : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
 
+    // Wrap stop_date columns with COALESCE to treat NULL as same-day event
+    const thisColExpr = this.wrapStopDateColumn(thisCol, filter.column)
+    const refColExpr = this.wrapStopDateColumn(refCol, filter.temporal_reference_column)
+
     // NULL handling: exclude rows with NULL temporal columns
-    return `(${thisCol} IS NOT NULL AND ${refCol} IS NOT NULL AND ${thisCol} < ${refCol})`
+    return `(${thisCol} IS NOT NULL AND ${refCol} IS NOT NULL AND ${thisColExpr} < ${refColExpr})`
   }
 
   /**
@@ -794,8 +817,12 @@ class AggregationService {
         ? filter.temporal_reference_column
         : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
 
+    // Wrap stop_date columns with COALESCE to treat NULL as same-day event
+    const thisColExpr = this.wrapStopDateColumn(thisCol, filter.column)
+    const refColExpr = this.wrapStopDateColumn(refCol, filter.temporal_reference_column)
+
     // NULL handling: exclude rows with NULL temporal columns
-    return `(${thisCol} IS NOT NULL AND ${refCol} IS NOT NULL AND ${thisCol} > ${refCol})`
+    return `(${thisCol} IS NOT NULL AND ${refCol} IS NOT NULL AND ${thisColExpr} > ${refColExpr})`
   }
 
   /**
@@ -874,11 +901,24 @@ class AggregationService {
     const thisCol = filter.column!
     const refCol = filter.temporal_reference_column!
 
+    // Helper function to wrap a column with COALESCE for stop_date columns
+    // When stop_date is NULL, treat it as equal to start_date (same-day event)
+    const wrapTemporalColumn = (tableAlias: string, colName: string): string => {
+      // If column is stop_date, use COALESCE to fall back to start_date
+      if (colName === 'stop_date') {
+        return `COALESCE(${tableAlias}.stop_date, ${tableAlias}.start_date)`
+      }
+      return `${tableAlias}.${colName}`
+    }
+
+    const baseColExpr = wrapTemporalColumn('base_table', thisCol)
+    const refColExpr = wrapTemporalColumn('ref_table', refCol)
+
     let temporalCondition = ''
     if (filter.operator === 'temporal_before') {
-      temporalCondition = `${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND base_table.${thisCol} < ref_table.${refCol}`
+      temporalCondition = `base_table.${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND ${baseColExpr} < ${refColExpr}`
     } else if (filter.operator === 'temporal_after') {
-      temporalCondition = `${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND base_table.${thisCol} > ref_table.${refCol}`
+      temporalCondition = `base_table.${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND ${baseColExpr} > ${refColExpr}`
     } else {
       // Other temporal operators not yet supported for cross-table
       return null
