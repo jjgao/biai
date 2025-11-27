@@ -31,9 +31,10 @@ export default function TemporalFilterBuilder({
   onCreateFilter,
   onClose
 }: TemporalFilterBuilderProps) {
-  const [operator, setOperator] = useState<'temporal_before' | 'temporal_after'>('temporal_before')
+  const [operator, setOperator] = useState<'temporal_before' | 'temporal_after' | 'temporal_within'>('temporal_before')
   const [referenceTable, setReferenceTable] = useState<string>(currentTable)
   const [referenceColumn, setReferenceColumn] = useState<string>('')
+  const [daysThreshold, setDaysThreshold] = useState<number>(30)
 
   // Get temporal columns from a specific table
   const getTemporalColumns = (tableName: string) => {
@@ -53,12 +54,17 @@ export default function TemporalFilterBuilder({
       return
     }
 
-    const filter = {
+    const filter: any = {
       column: currentColumn.column_name,
       operator,
       temporal_reference_column: referenceColumn,
       temporal_reference_table: referenceTable !== currentTable ? referenceTable : undefined,
       tableName: currentTable
+    }
+
+    // Add value for temporal_within operator
+    if (operator === 'temporal_within') {
+      filter.value = daysThreshold
     }
 
     onCreateFilter(filter)
@@ -76,7 +82,9 @@ export default function TemporalFilterBuilder({
         <div className="filter-preview">
           <strong>{currentColumn.display_name || currentColumn.column_name}</strong>
           <span className="operator-text">
-            {operator === 'temporal_before' ? 'occurs before' : 'occurs after'}
+            {operator === 'temporal_before' && 'occurs before'}
+            {operator === 'temporal_after' && 'occurs after'}
+            {operator === 'temporal_within' && `within ${daysThreshold} days of`}
           </span>
           <span className="reference-text">
             {referenceColumn ? (
@@ -96,13 +104,30 @@ export default function TemporalFilterBuilder({
           >
             <option value="temporal_before">Before</option>
             <option value="temporal_after">After</option>
+            <option value="temporal_within">Within</option>
           </select>
           <div className="help-text">
-            {operator === 'temporal_before'
-              ? 'Filter to rows where this event occurs before the reference event'
-              : 'Filter to rows where this event occurs after the reference event'}
+            {operator === 'temporal_before' && 'Filter to rows where this event occurs before the reference event'}
+            {operator === 'temporal_after' && 'Filter to rows where this event occurs after the reference event'}
+            {operator === 'temporal_within' && 'Filter to rows where this event occurs within a specified number of days of the reference event'}
           </div>
         </div>
+
+        {operator === 'temporal_within' && (
+          <div className="form-group">
+            <label>Days Threshold</label>
+            <input
+              type="number"
+              value={daysThreshold}
+              onChange={e => setDaysThreshold(parseInt(e.target.value) || 0)}
+              min="0"
+              className="days-input"
+            />
+            <div className="help-text">
+              Maximum number of days between the two events (uses absolute difference)
+            </div>
+          </div>
+        )}
 
         <div className="form-group">
           <label>Reference Table</label>
