@@ -736,12 +736,10 @@ class AggregationService {
         return this.buildTemporalDurationCondition(filter, alias)
 
       case 'temporal_within':
-        // To be implemented in Phase 4
-        throw new Error('temporal_within operator not yet implemented')
+        return this.buildTemporalWithinCondition(filter, alias)
 
       case 'temporal_overlaps':
-        // To be implemented in Phase 4
-        throw new Error('temporal_overlaps operator not yet implemented')
+        return this.buildTemporalOverlapsCondition(filter, alias)
 
       default:
         return ''
@@ -845,8 +843,77 @@ class AggregationService {
 
     const threshold = this.ensureNumeric(filter.value, 'temporal_duration')
 
+    // Wrap stop_date columns with COALESCE to treat NULL as same-day event
+    const stopColExpr = this.wrapStopDateColumn(stopCol, filter.temporal_reference_column)
+
+    // NULL handling: exclude rows with NULL start column (stop can be NULL, will use start)
+    return `(${startCol} IS NOT NULL AND (${stopColExpr} - ${startCol}) >= ${threshold})`
+  }
+
+  /**
+   * Build SQL condition for temporal_within operator
+   * Event A occurs within N days of event B
+   * Uses absolute difference: ABS(colA - colB) <= threshold
+   */
+  private buildTemporalWithinCondition(filter: Filter, alias?: string | null): string {
+    if (!filter.column || !filter.temporal_reference_column || filter.value === undefined) {
+      throw new Error('temporal_within requires column, temporal_reference_column, and value (days threshold)')
+    }
+
+    const thisCol =
+      alias === null
+        ? filter.column
+        : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
+
+    // For within-table comparisons, use the same alias for reference column
+    const refCol =
+      alias === null
+        ? filter.temporal_reference_column
+        : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
+
+    const threshold = this.ensureNumeric(filter.value, 'temporal_within')
+
+    // Wrap stop_date columns with COALESCE to treat NULL as same-day event
+    const thisColExpr = this.wrapStopDateColumn(thisCol, filter.column)
+    const refColExpr = this.wrapStopDateColumn(refCol, filter.temporal_reference_column)
+
     // NULL handling: exclude rows with NULL temporal columns
-    return `(${startCol} IS NOT NULL AND ${stopCol} IS NOT NULL AND (${stopCol} - ${startCol}) >= ${threshold})`
+    // ABS(col1 - col2) <= threshold
+    return `(${thisCol} IS NOT NULL AND ${refCol} IS NOT NULL AND abs(${thisColExpr} - ${refColExpr}) <= ${threshold})`
+  }
+
+  /**
+   * Build SQL condition for temporal_overlaps operator
+   * Two time periods overlap if:
+   * - Period A: [start1, stop1]
+   * - Period B: [start2, stop2]
+   * - Overlap condition: start1 <= stop2 AND stop1 >= start2
+   *
+   * For this operator:
+   * - column = start of period A
+   * - temporal_reference_column = stop of period A
+   * - temporal_reference_table (if cross-table) = table B
+   * - The reference table's start_date/stop_date are used for period B
+   *
+   * Note: This is for within-table overlaps. Cross-table overlaps need special handling.
+   */
+  private buildTemporalOverlapsCondition(filter: Filter, alias?: string | null): string {
+    if (!filter.column || !filter.temporal_reference_column) {
+      throw new Error('temporal_overlaps requires column (start) and temporal_reference_column (stop)')
+    }
+
+    const start1Col =
+      alias === null
+        ? filter.column
+        : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
+    const stop1Col =
+      alias === null
+        ? filter.temporal_reference_column
+        : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
+
+    // For within-table overlaps, we need a second pair of columns to compare against
+    // This would require additional filter properties - for now, throw error
+    throw new Error('temporal_overlaps within-table not yet implemented - requires comparing two different row pairs')
   }
 
   /**
@@ -919,6 +986,37 @@ class AggregationService {
       temporalCondition = `base_table.${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND ${baseColExpr} < ${refColExpr}`
     } else if (filter.operator === 'temporal_after') {
       temporalCondition = `base_table.${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND ${baseColExpr} > ${refColExpr}`
+    } else if (filter.operator === 'temporal_within') {
+      // Within N days: ABS(col1 - col2) <= threshold
+      if (filter.value === undefined) {
+        console.warn('temporal_within requires a value (days threshold)')
+        return null
+      }
+      const threshold = this.ensureNumeric(filter.value, 'temporal_within')
+      temporalCondition = `base_table.${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND abs(${baseColExpr} - ${refColExpr}) <= ${threshold}`
+    } else if (filter.operator === 'temporal_overlaps') {
+      // Overlaps: start1 <= stop2 AND stop1 >= start2
+      // For cross-table: base_table's [start, stop] overlaps with ref_table's [start, stop]
+      // We need both start and stop columns from both tables
+      // Assume: thisCol = base start, temporal_reference_column = base stop (which maps to ref start)
+      // We need to find ref stop by looking at temporal metadata
+
+      // Get the paired column for the reference column (ref_table's stop_date)
+      const baseStartCol = thisCol
+      const baseStopCol = filter.temporal_reference_column
+
+      // For ref_table, we assume start_date and stop_date follow same pattern
+      // This requires knowledge of ref_table's temporal metadata
+      const refStartCol = refCol
+      const refStopCol = 'stop_date' // Assume stop_date is the paired column
+
+      const baseStartExpr = wrapTemporalColumn('base_table', baseStartCol)
+      const baseStopExpr = wrapTemporalColumn('base_table', baseStopCol)
+      const refStartExpr = wrapTemporalColumn('ref_table', refStartCol)
+      const refStopExpr = wrapTemporalColumn('ref_table', refStopCol)
+
+      // Overlap condition: base.start <= ref.stop AND base.stop >= ref.start
+      temporalCondition = `base_table.${baseStartCol} IS NOT NULL AND ref_table.${refStartCol} IS NOT NULL AND ${baseStartExpr} <= ${refStopExpr} AND ${baseStopExpr} >= ${refStartExpr}`
     } else {
       // Other temporal operators not yet supported for cross-table
       return null
