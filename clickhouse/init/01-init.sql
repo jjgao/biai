@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS dataset_columns (
     suggested_chart String DEFAULT '',
     display_priority Int32 DEFAULT 0,
     is_hidden Boolean DEFAULT false,
+    temporal_role Enum8('none' = 0, 'start_date' = 1, 'stop_date' = 2, 'duration' = 3) DEFAULT 'none',
+    temporal_paired_column Nullable(String),
+    temporal_unit Enum8('days' = 0, 'months' = 1, 'years' = 2) DEFAULT 'days',
     created_at DateTime DEFAULT now()
 ) ENGINE = MergeTree()
 ORDER BY (dataset_id, table_id, column_index);

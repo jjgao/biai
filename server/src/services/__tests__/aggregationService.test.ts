@@ -1152,3 +1152,144 @@ describe('AggregationService - countBy metrics', () => {
     expect(result).not.toContain('NOT IN')
   })
 })
+
+describe('AggregationService - Temporal Filtering', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  describe('temporal_before operator', () => {
+    test('generates correct SQL for temporal_before with same-table columns', () => {
+      const condition = callPrivate('buildFilterCondition')({
+        column: 'sample_date',
+        operator: 'temporal_before',
+        temporal_reference_column: 'treatment_start'
+      })
+
+      expect(condition).toBe('(base_table.sample_date IS NOT NULL AND base_table.sample_date < treatment_start)')
+    })
+
+    test('includes NULL check for temporal_before', () => {
+      const condition = callPrivate('buildFilterCondition')({
+        column: 'event_a',
+        operator: 'temporal_before',
+        temporal_reference_column: 'event_b'
+      })
+
+      expect(condition).toContain('IS NOT NULL')
+      expect(condition).toContain('event_a < event_b')
+    })
+
+    test('throws error if temporal_reference_column is missing', () => {
+      expect(() => {
+        callPrivate('buildFilterCondition')({
+          column: 'sample_date',
+          operator: 'temporal_before'
+        })
+      }).toThrow('temporal_before requires column and temporal_reference_column')
+    })
+  })
+
+  describe('temporal_after operator', () => {
+    test('generates correct SQL for temporal_after with same-table columns', () => {
+      const condition = callPrivate('buildFilterCondition')({
+        column: 'followup_date',
+        operator: 'temporal_after',
+        temporal_reference_column: 'treatment_end'
+      })
+
+      expect(condition).toBe('(base_table.followup_date IS NOT NULL AND base_table.followup_date > treatment_end)')
+    })
+
+    test('includes NULL check for temporal_after', () => {
+      const condition = callPrivate('buildFilterCondition')({
+        column: 'event_a',
+        operator: 'temporal_after',
+        temporal_reference_column: 'event_b'
+      })
+
+      expect(condition).toContain('IS NOT NULL')
+      expect(condition).toContain('event_a > event_b')
+    })
+
+    test('throws error if temporal_reference_column is missing', () => {
+      expect(() => {
+        callPrivate('buildFilterCondition')({
+          column: 'followup_date',
+          operator: 'temporal_after'
+        })
+      }).toThrow('temporal_after requires column and temporal_reference_column')
+    })
+  })
+
+  describe('temporal_duration operator', () => {
+    test('generates correct SQL for temporal_duration', () => {
+      const condition = callPrivate('buildFilterCondition')({
+        column: 'treatment_start',
+        operator: 'temporal_duration',
+        temporal_reference_column: 'treatment_end',
+        value: 180
+      })
+
+      expect(condition).toBe('(base_table.treatment_start IS NOT NULL AND base_table.treatment_end IS NOT NULL AND (base_table.treatment_end - base_table.treatment_start) >= 180)')
+    })
+
+    test('includes NULL checks for both start and stop columns', () => {
+      const condition = callPrivate('buildFilterCondition')({
+        column: 'start_date',
+        operator: 'temporal_duration',
+        temporal_reference_column: 'stop_date',
+        value: 30
+      })
+
+      expect(condition).toContain('start_date IS NOT NULL')
+      expect(condition).toContain('stop_date IS NOT NULL')
+      expect(condition).toContain('(base_table.stop_date - base_table.start_date) >= 30')
+    })
+
+    test('throws error if temporal_reference_column is missing', () => {
+      expect(() => {
+        callPrivate('buildFilterCondition')({
+          column: 'start_date',
+          operator: 'temporal_duration',
+          value: 30
+        })
+      }).toThrow('temporal_duration requires column (start), temporal_reference_column (stop), and value (threshold)')
+    })
+
+    test('throws error if value threshold is missing', () => {
+      expect(() => {
+        callPrivate('buildFilterCondition')({
+          column: 'start_date',
+          operator: 'temporal_duration',
+          temporal_reference_column: 'stop_date'
+        })
+      }).toThrow('temporal_duration requires column (start), temporal_reference_column (stop), and value (threshold)')
+    })
+  })
+
+  describe('temporal_within operator (Phase 4 placeholder)', () => {
+    test('throws not implemented error', () => {
+      expect(() => {
+        callPrivate('buildFilterCondition')({
+          column: 'treatment_start',
+          operator: 'temporal_within',
+          temporal_reference_column: 'diagnosis_date',
+          temporal_window_days: 90
+        })
+      }).toThrow('temporal_within operator not yet implemented')
+    })
+  })
+
+  describe('temporal_overlaps operator (Phase 4 placeholder)', () => {
+    test('throws not implemented error', () => {
+      expect(() => {
+        callPrivate('buildFilterCondition')({
+          column: 'treatment_a_start',
+          operator: 'temporal_overlaps',
+          temporal_reference_column: 'treatment_b_start'
+        })
+      }).toThrow('temporal_overlaps operator not yet implemented')
+    })
+  })
+})

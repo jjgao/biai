@@ -5,6 +5,7 @@
 export interface Filter {
   column?: string
   operator?: 'eq' | 'in' | 'gt' | 'lt' | 'gte' | 'lte' | 'between'
+    | 'temporal_before' | 'temporal_after' | 'temporal_within' | 'temporal_overlaps' | 'temporal_duration'
   value?: any
   and?: Filter[]
   or?: Filter[]
@@ -15,6 +16,14 @@ export interface Filter {
    * The backend ignores this field and only relies on {@link tableName} to derive join paths.
    */
   countByKey?: string
+
+  // Temporal-specific fields
+  /** Column to compare against for temporal operators (e.g., reference event column) */
+  temporal_reference_column?: string
+  /** Table containing the reference column (for cross-table temporal comparisons) */
+  temporal_reference_table?: string
+  /** Time window in days for temporal_within operator */
+  temporal_window_days?: number
 }
 
 export interface TableRelationship {

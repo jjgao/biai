@@ -532,13 +532,13 @@ router.delete('/:id/tables/:tableId/relationships', async (req, res) => {
 // Update column metadata
 router.patch('/:id/tables/:tableId/columns/:columnName', async (req, res) => {
   try {
-    const { displayName, description, isHidden, displayType } = req.body
+    const { displayName, description, isHidden, displayType, temporalRole, temporalPairedColumn, temporalUnit } = req.body
 
     await datasetService.updateColumnMetadata(
       req.params.id,
       req.params.tableId,
       req.params.columnName,
-      { displayName, description, isHidden, displayType }
+      { displayName, description, isHidden, displayType, temporalRole, temporalPairedColumn, temporalUnit }
     )
 
     res.json({ success: true, message: 'Column metadata updated' })

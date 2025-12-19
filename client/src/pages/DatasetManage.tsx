@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import SafeHtml from '../components/SafeHtml'
+import TemporalConfigPanel from '../components/TemporalConfigPanel'
 import api from '../services/api'
 
 interface Column {
@@ -46,11 +47,15 @@ interface Dataset {
 
 interface ColumnMetadata {
   column_name: string
+  column_type: string
   display_name: string
   description: string
   is_hidden: boolean
   display_type: string
   suggested_chart: string
+  temporal_role?: 'none' | 'start_date' | 'stop_date' | 'duration'
+  temporal_paired_column?: string
+  temporal_unit?: 'days' | 'months' | 'years'
 }
 
 interface ColumnMetadataUpdate {
@@ -98,6 +103,9 @@ function DatasetManage() {
     referencedTableId: '',
     referencedColumn: ''
   })
+  const [showTemporalConfig, setShowTemporalConfig] = useState(false)
+  const [temporalConfigTableId, setTemporalConfigTableId] = useState<string | null>(null)
+  const [temporalColumns, setTemporalColumns] = useState<ColumnMetadata[]>([])
   const [referencedColumnsCache, setReferencedColumnsCache] = useState<Record<string, ColumnMetadata[]>>({})
   const [referencedColumnsLoading, setReferencedColumnsLoading] = useState(false)
   const [relationshipSaving, setRelationshipSaving] = useState(false)
@@ -339,6 +347,21 @@ function DatasetManage() {
     } catch (error) {
       console.error('Failed to load columns:', error)
       alert('Failed to load columns')
+    } finally {
+      setLoadingColumns(false)
+    }
+  }
+
+  const loadTemporalConfig = async (tableId: string) => {
+    try {
+      setLoadingColumns(true)
+      const cols = await fetchTableColumns(tableId)
+      setTemporalColumns(cols)
+      setTemporalConfigTableId(tableId)
+      setShowTemporalConfig(true)
+    } catch (error) {
+      console.error('Failed to load temporal config:', error)
+      alert('Failed to load temporal configuration')
     } finally {
       setLoadingColumns(false)
     }
@@ -1179,6 +1202,19 @@ function DatasetManage() {
                     Manage Columns
                   </button>
                   <button
+                    onClick={() => loadTemporalConfig(table.id)}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: '#009688',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Temporal Config
+                  </button>
+                  <button
                     onClick={() => handleDeleteTable(table.id)}
                     style={{
                       padding: '0.5rem 1rem',
@@ -1584,6 +1620,63 @@ function DatasetManage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Temporal Configuration Panel */}
+      {showTemporalConfig && temporalConfigTableId && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={() => setShowTemporalConfig(false)}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: '12px',
+              maxWidth: '1200px',
+              width: '90%',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '20px', borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0 }}>Temporal Configuration</h2>
+              <button
+                onClick={() => setShowTemporalConfig(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#666',
+                  padding: '0',
+                  width: '32px',
+                  height: '32px'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <TemporalConfigPanel
+              datasetId={id!}
+              tableId={temporalConfigTableId}
+              columns={temporalColumns}
+              onUpdate={() => loadTemporalConfig(temporalConfigTableId)}
+            />
           </div>
         </div>
       )}

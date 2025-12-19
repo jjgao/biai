@@ -7,6 +7,7 @@ import api from '../services/api'
 import type { MetricPathSegment } from '../types'
 import { findRelationshipPath, type Filter } from '../utils/filterHelpers'
 import { getStateCode, normalizeStateName } from '../data/us-states'
+import TemporalFilterBuilder from '../components/TemporalFilterBuilder'
 // Small categorical sets render better as pie charts; beyond this use bars.
 const MAX_PIE_CATEGORIES = 8
 const ROW_COUNT_KEY = 'rows'
@@ -93,6 +94,10 @@ interface ColumnMetadata {
   suggested_chart: string
   display_priority: number
   is_hidden: boolean
+  // Temporal filtering fields
+  temporal_role?: 'none' | 'start_date' | 'stop_date' | 'duration'
+  temporal_paired_column?: string
+  temporal_unit?: 'days' | 'months' | 'years'
 }
 
 interface CategoryCount {
@@ -236,6 +241,7 @@ function DatasetExplorer() {
   const [baselineAggregations, setBaselineAggregations] = useState<Record<string, ColumnAggregation[]>>({})
   const [filters, setFilters] = useState<Filter[]>([])
   const [activeFilterMenu, setActiveFilterMenu] = useState<{ tableName: string; columnName: string; countKey?: string } | null>(null)
+  const [temporalFilterBuilder, setTemporalFilterBuilder] = useState<{ tableName: string; columnName: string; column: ColumnMetadata } | null>(null)
   const [customRangeInputs, setCustomRangeInputs] = useState<Record<string, { min: string; max: string }>>({})
   const [rangeSelections, setRangeSelections] = useState<Record<string, Array<{ start: number; end: number }>>>({})
   const [countBySelections, setCountBySelections] = useState<Record<string, CountBySelection>>({})
@@ -3024,6 +3030,32 @@ const renderNumericFilterMenu = (
         >
           ⚲
         </button>
+        {metadata && metadata.temporal_role && metadata.temporal_role !== 'none' && (
+          <button
+            type="button"
+            onClick={event => {
+              event.stopPropagation()
+              setTemporalFilterBuilder({ tableName, columnName: field, column: metadata })
+            }}
+            style={{
+              border: 'none',
+              background: '#9C27B0',
+              color: 'white',
+              borderRadius: '50%',
+              width: '20px',
+              height: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.7rem',
+              cursor: 'pointer',
+              lineHeight: 1
+            }}
+            title="Create temporal filter"
+          >
+            ⏱
+          </button>
+        )}
       </>
     )
 
@@ -3319,6 +3351,32 @@ const renderNumericFilterMenu = (
         >
           ⚲
         </button>
+        {metadata && metadata.temporal_role && metadata.temporal_role !== 'none' && (
+          <button
+            type="button"
+            onClick={event => {
+              event.stopPropagation()
+              setTemporalFilterBuilder({ tableName, columnName: field, column: metadata })
+            }}
+            style={{
+              border: 'none',
+              background: '#9C27B0',
+              color: 'white',
+              borderRadius: '50%',
+              width: '20px',
+              height: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.7rem',
+              cursor: 'pointer',
+              lineHeight: 1
+            }}
+            title="Create temporal filter"
+          >
+            ⏱
+          </button>
+        )}
       </>
     )
 
@@ -3565,6 +3623,32 @@ const renderNumericFilterMenu = (
         >
           ⚲
         </button>
+        {metadata && metadata.temporal_role && metadata.temporal_role !== 'none' && (
+          <button
+            type="button"
+            onClick={event => {
+              event.stopPropagation()
+              setTemporalFilterBuilder({ tableName, columnName: field, column: metadata })
+            }}
+            style={{
+              border: 'none',
+              background: '#9C27B0',
+              color: 'white',
+              borderRadius: '50%',
+              width: '20px',
+              height: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.7rem',
+              cursor: 'pointer',
+              lineHeight: 1
+            }}
+            title="Create temporal filter"
+          >
+            ⏱
+          </button>
+        )}
       </>
     )
 
@@ -3819,6 +3903,32 @@ const renderNumericFilterMenu = (
         >
           ⚲
         </button>
+        {metadata && metadata.temporal_role && metadata.temporal_role !== 'none' && (
+          <button
+            type="button"
+            onClick={event => {
+              event.stopPropagation()
+              setTemporalFilterBuilder({ tableName, columnName: field, column: metadata })
+            }}
+            style={{
+              border: 'none',
+              background: '#9C27B0',
+              color: 'white',
+              borderRadius: '50%',
+              width: '20px',
+              height: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.7rem',
+              cursor: 'pointer',
+              lineHeight: 1
+            }}
+            title="Create temporal filter"
+          >
+            ⏱
+          </button>
+        )}
       </>
     )
 
@@ -4051,6 +4161,32 @@ const renderNumericFilterMenu = (
         >
           ⚲
         </button>
+        {metadata && metadata.temporal_role && metadata.temporal_role !== 'none' && (
+          <button
+            type="button"
+            onClick={event => {
+              event.stopPropagation()
+              setTemporalFilterBuilder({ tableName, columnName: field, column: metadata })
+            }}
+            style={{
+              border: 'none',
+              background: '#9C27B0',
+              color: 'white',
+              borderRadius: '50%',
+              width: '20px',
+              height: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.7rem',
+              cursor: 'pointer',
+              lineHeight: 1
+            }}
+            title="Create temporal filter"
+          >
+            ⏱
+          </button>
+        )}
       </>
     )
 
@@ -4688,6 +4824,8 @@ const renderNumericFilterMenu = (
 
               let displayValue = String(actualFilter.value)
               let logicType = '' // For tooltip
+              let isTemporal = false
+              let referenceTableColor = null
 
               // Remove handler - uses actualFilter's column/table regardless of NOT wrapper
               const removeHandler = () => {
@@ -4713,7 +4851,34 @@ const renderNumericFilterMenu = (
                 })
               }
 
-              if (actualFilter.operator === 'between' && Array.isArray(actualFilter.value)) {
+              // Check for temporal operators
+              if (actualFilter.operator === 'temporal_before' || actualFilter.operator === 'temporal_after' || actualFilter.operator === 'temporal_within' || actualFilter.operator === 'temporal_overlaps' || actualFilter.operator === 'temporal_duration') {
+                isTemporal = true
+                const refTable = actualFilter.temporal_reference_table || tableName
+                const refColumn = actualFilter.temporal_reference_column || '(unknown)'
+
+                if (refTable) {
+                  referenceTableColor = getTableColor(refTable)
+                }
+
+                if (actualFilter.operator === 'temporal_before') {
+                  displayValue = `before ${refColumn}`
+                  logicType = 'Temporal Before'
+                } else if (actualFilter.operator === 'temporal_after') {
+                  displayValue = `after ${refColumn}`
+                  logicType = 'Temporal After'
+                } else if (actualFilter.operator === 'temporal_within') {
+                  const days = actualFilter.temporal_window_days || 0
+                  displayValue = `within ${days} days after ${refColumn}`
+                  logicType = 'Temporal Within'
+                } else if (actualFilter.operator === 'temporal_overlaps') {
+                  displayValue = `overlaps with ${refColumn}`
+                  logicType = 'Temporal Overlaps'
+                } else if (actualFilter.operator === 'temporal_duration') {
+                  displayValue = `duration >= ${actualFilter.value || 0} days`
+                  logicType = 'Temporal Duration'
+                }
+              } else if (actualFilter.operator === 'between' && Array.isArray(actualFilter.value)) {
                 displayValue = `[${typeof actualFilter.value[0] === 'number' ? actualFilter.value[0].toFixed(2) : actualFilter.value[0]}, ${typeof actualFilter.value[1] === 'number' ? actualFilter.value[1].toFixed(2) : actualFilter.value[1]}]`
                 logicType = 'Range'
               } else if (actualFilter.operator === 'in' && Array.isArray(actualFilter.value)) {
@@ -4774,7 +4939,11 @@ const renderNumericFilterMenu = (
                   )}
                   <div
                     style={{
-                      background: isNot ? `linear-gradient(135deg, ${tableColor}DD, ${tableColor}BB)` : tableColor,
+                      background: isTemporal && referenceTableColor
+                        ? `linear-gradient(90deg, ${tableColor} 0%, ${tableColor} 50%, ${referenceTableColor} 50%, ${referenceTableColor} 100%)`
+                        : isNot
+                        ? `linear-gradient(135deg, ${tableColor}DD, ${tableColor}BB)`
+                        : tableColor,
                       padding: '0.25rem 0.75rem',
                       borderRadius: '4px',
                       fontSize: '0.875rem',
@@ -6242,6 +6411,42 @@ const renderNumericFilterMenu = (
           </div>
         )
       })}
+
+      {/* Temporal Filter Builder */}
+      {temporalFilterBuilder && dataset && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={() => setTemporalFilterBuilder(null)}
+        >
+          <div onClick={(e) => e.stopPropagation()}>
+            <TemporalFilterBuilder
+              currentTable={temporalFilterBuilder.tableName}
+              currentColumn={temporalFilterBuilder.column}
+              allTables={dataset.tables.map(t => ({
+                name: t.name,
+                displayName: t.display_name || t.name
+              }))}
+              columnsByTable={columnMetadata}
+              onCreateFilter={(filter) => {
+                setFilters(prev => [...prev, filter])
+                setTemporalFilterBuilder(null)
+              }}
+              onClose={() => setTemporalFilterBuilder(null)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

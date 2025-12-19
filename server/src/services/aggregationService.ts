@@ -51,6 +51,7 @@ export interface Filter {
   // Simple filter (leaf node)
   column?: string
   operator?: 'eq' | 'in' | 'gt' | 'lt' | 'gte' | 'lte' | 'between'
+    | 'temporal_before' | 'temporal_after' | 'temporal_within' | 'temporal_overlaps' | 'temporal_duration'
   value?: any
 
   // Logical operators (internal nodes)
@@ -60,6 +61,11 @@ export interface Filter {
 
   // Cross-table metadata (optional)
   tableName?: string
+
+  // Temporal-specific fields
+  temporal_reference_column?: string
+  temporal_reference_table?: string
+  temporal_window_days?: number
 }
 
 export interface TableRelationship {
@@ -509,6 +515,15 @@ class AggregationService {
       const aliasOverride = targetTable ? tableAliasResolver?.(targetTable) : undefined
       const isCrossTable = !aliasOverride && targetTable && currentTableName && allTablesMetadata && targetTable !== currentTableName
 
+      // Check for cross-table temporal filter
+      // IMPORTANT: Only process cross-table temporal filters on the table they were created on
+      const filterTableName = (filter as any).tableName
+      const isCrossTableTemporal = currentTableName && allTablesMetadata &&
+        filter.operator?.startsWith('temporal_') &&
+        filter.temporal_reference_table &&
+        filter.temporal_reference_table !== currentTableName &&
+        (!filterTableName || filterTableName === currentTableName)  // Only apply to origin table
+
       // Special handling for NOT filters with parent-table counting
       // When counting by parent with a NOT filter on a local (child) column,
       // we need parent-level exclusion semantics, not row-level NOT
@@ -516,7 +531,17 @@ class AggregationService {
       const isParentCounting = metricContext?.type === 'parent'
       const isLocalFilter = aliasOverride === BASE_TABLE_ALIAS || (!aliasOverride && !isCrossTable)
 
-      if (hasNot && isParentCounting && isLocalFilter && metricContext && currentTableName && currentTableClickhouseName) {
+      if (isCrossTableTemporal) {
+        // This is a cross-table temporal filter - build EXISTS subquery
+        const subquery = this.buildCrossTableTemporalSubquery(
+          currentTableName,
+          filter,
+          allTablesMetadata
+        )
+        if (subquery) {
+          crossTableConditions.push(subquery)
+        }
+      } else if (hasNot && isParentCounting && isLocalFilter && metricContext && currentTableName && currentTableClickhouseName) {
         // Use parent-level exclusion: exclude parents where ANY child matches positive condition
         const subquery = this.buildParentExclusionSubquery(filter, currentTableName, metricContext, currentTableClickhouseName)
         if (subquery) {
@@ -704,9 +729,340 @@ class AggregationService {
         const [start, end] = filter.value.map(v => this.ensureNumeric(v, 'between'))
         return `${col} BETWEEN ${start} AND ${end}`
 
+      case 'temporal_before':
+        return this.buildTemporalBeforeCondition(filter, alias)
+
+      case 'temporal_after':
+        return this.buildTemporalAfterCondition(filter, alias)
+
+      case 'temporal_duration':
+        return this.buildTemporalDurationCondition(filter, alias)
+
+      case 'temporal_within':
+        return this.buildTemporalWithinCondition(filter, alias)
+
+      case 'temporal_overlaps':
+        return this.buildTemporalOverlapsCondition(filter, alias)
+
       default:
         return ''
     }
+  }
+
+  /**
+   * Helper method to wrap stop_date columns with COALESCE
+   * When stop_date is NULL, treat it as equal to start_date (same-day event)
+   * This is particularly useful for instantaneous events like surgeries
+   */
+  private wrapStopDateColumn(columnExpr: string, columnName: string): string {
+    if (columnName === 'stop_date') {
+      // Extract table alias from columnExpr (e.g., "base_table.stop_date" -> "base_table")
+      const parts = columnExpr.split('.')
+      if (parts.length === 2) {
+        const tableAlias = parts[0]
+        return `COALESCE(${tableAlias}.stop_date, ${tableAlias}.start_date)`
+      }
+      // If no alias, assume both start_date and stop_date are in same context
+      return `COALESCE(stop_date, start_date)`
+    }
+    return columnExpr
+  }
+
+  /**
+   * Build SQL condition for temporal_before operator
+   * Event A occurs before event B starts
+   */
+  private buildTemporalBeforeCondition(filter: Filter, alias?: string | null): string {
+    if (!filter.column || !filter.temporal_reference_column) {
+      throw new Error('temporal_before requires column and temporal_reference_column')
+    }
+
+    const thisCol =
+      alias === null
+        ? filter.column
+        : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
+
+    // For within-table comparisons, use the same alias for reference column
+    // For cross-table comparisons, this would need join logic (Phase 4)
+    const refCol =
+      alias === null
+        ? filter.temporal_reference_column
+        : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
+
+    // Wrap stop_date columns with COALESCE to treat NULL as same-day event
+    const thisColExpr = this.wrapStopDateColumn(thisCol, filter.column)
+    const refColExpr = this.wrapStopDateColumn(refCol, filter.temporal_reference_column)
+
+    // NULL handling: exclude rows with NULL temporal columns
+    return `(${thisCol} IS NOT NULL AND ${refCol} IS NOT NULL AND ${thisColExpr} < ${refColExpr})`
+  }
+
+  /**
+   * Build SQL condition for temporal_after operator
+   * Event A occurs after event B ends
+   */
+  private buildTemporalAfterCondition(filter: Filter, alias?: string | null): string {
+    if (!filter.column || !filter.temporal_reference_column) {
+      throw new Error('temporal_after requires column and temporal_reference_column')
+    }
+
+    const thisCol =
+      alias === null
+        ? filter.column
+        : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
+
+    // For within-table comparisons, use the same alias for reference column
+    // For cross-table comparisons, this would need join logic (Phase 4)
+    const refCol =
+      alias === null
+        ? filter.temporal_reference_column
+        : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
+
+    // Wrap stop_date columns with COALESCE to treat NULL as same-day event
+    const thisColExpr = this.wrapStopDateColumn(thisCol, filter.column)
+    const refColExpr = this.wrapStopDateColumn(refCol, filter.temporal_reference_column)
+
+    // NULL handling: exclude rows with NULL temporal columns
+    return `(${thisCol} IS NOT NULL AND ${refCol} IS NOT NULL AND ${thisColExpr} > ${refColExpr})`
+  }
+
+  /**
+   * Build SQL condition for temporal_duration operator
+   * Event duration meets threshold (stop - start >= value)
+   */
+  private buildTemporalDurationCondition(filter: Filter, alias?: string | null): string {
+    if (!filter.column || !filter.temporal_reference_column || filter.value === undefined) {
+      throw new Error('temporal_duration requires column (start), temporal_reference_column (stop), and value (threshold)')
+    }
+
+    const startCol =
+      alias === null
+        ? filter.column
+        : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
+    const stopCol =
+      alias === null
+        ? filter.temporal_reference_column
+        : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
+
+    const threshold = this.ensureNumeric(filter.value, 'temporal_duration')
+
+    // Wrap stop_date columns with COALESCE to treat NULL as same-day event
+    const stopColExpr = this.wrapStopDateColumn(stopCol, filter.temporal_reference_column)
+
+    // NULL handling: exclude rows with NULL start column (stop can be NULL, will use start)
+    return `(${startCol} IS NOT NULL AND (${stopColExpr} - ${startCol}) >= ${threshold})`
+  }
+
+  /**
+   * Build SQL condition for temporal_within operator
+   * Event A occurs within N days of event B
+   * Uses absolute difference: ABS(colA - colB) <= threshold
+   */
+  private buildTemporalWithinCondition(filter: Filter, alias?: string | null): string {
+    if (!filter.column || !filter.temporal_reference_column || filter.value === undefined) {
+      throw new Error('temporal_within requires column, temporal_reference_column, and value (days threshold)')
+    }
+
+    const thisCol =
+      alias === null
+        ? filter.column
+        : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
+
+    // For within-table comparisons, use the same alias for reference column
+    const refCol =
+      alias === null
+        ? filter.temporal_reference_column
+        : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
+
+    const threshold = this.ensureNumeric(filter.value, 'temporal_within')
+
+    // Wrap stop_date columns with COALESCE to treat NULL as same-day event
+    const thisColExpr = this.wrapStopDateColumn(thisCol, filter.column)
+    const refColExpr = this.wrapStopDateColumn(refCol, filter.temporal_reference_column)
+
+    // NULL handling: exclude rows with NULL temporal columns
+    // ABS(col1 - col2) <= threshold
+    return `(${thisCol} IS NOT NULL AND ${refCol} IS NOT NULL AND abs(${thisColExpr} - ${refColExpr}) <= ${threshold})`
+  }
+
+  /**
+   * Build SQL condition for temporal_overlaps operator
+   * Two time periods overlap if:
+   * - Period A: [start1, stop1]
+   * - Period B: [start2, stop2]
+   * - Overlap condition: start1 <= stop2 AND stop1 >= start2
+   *
+   * For this operator:
+   * - column = start of period A
+   * - temporal_reference_column = stop of period A
+   * - temporal_reference_table (if cross-table) = table B
+   * - The reference table's start_date/stop_date are used for period B
+   *
+   * Note: This is for within-table overlaps. Cross-table overlaps need special handling.
+   */
+  private buildTemporalOverlapsCondition(filter: Filter, alias?: string | null): string {
+    if (!filter.column || !filter.temporal_reference_column) {
+      throw new Error('temporal_overlaps requires column (start) and temporal_reference_column (stop)')
+    }
+
+    const start1Col =
+      alias === null
+        ? filter.column
+        : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
+    const stop1Col =
+      alias === null
+        ? filter.temporal_reference_column
+        : this.columnRef(filter.temporal_reference_column, alias ?? BASE_TABLE_ALIAS)
+
+    // For within-table overlaps, we need a second pair of columns to compare against
+    // This would require additional filter properties - for now, throw error
+    throw new Error('temporal_overlaps within-table not yet implemented - requires comparing two different row pairs')
+  }
+
+  /**
+   * Build EXISTS subquery for cross-table temporal filtering
+   * Compares temporal columns between related tables via patient_id join
+   */
+  private buildCrossTableTemporalSubquery(
+    currentTableName: string,
+    filter: Filter,
+    allTablesMetadata: TableMetadata[]
+  ): string | null {
+    // Validate this is a temporal filter
+    if (!filter.operator?.startsWith('temporal_')) {
+      return null
+    }
+
+    // Validate we have both table names
+    const refTableName = filter.temporal_reference_table
+    if (!refTableName || refTableName === currentTableName) {
+      return null // Not a cross-table filter
+    }
+
+    // IMPORTANT: Cross-table temporal filters only apply to the table they were created on
+    // If the filter has a tableName property, it was created on that specific table
+    // and should only be applied to that table, not propagated to others
+    const filterTableName = (filter as any).tableName
+    if (filterTableName && filterTableName !== currentTableName) {
+      // This filter was created on a different table, skip it
+      return null
+    }
+
+    // Find table metadata
+    const currentTable = allTablesMetadata.find(t => t.table_name === currentTableName)
+    const refTable = allTablesMetadata.find(t => t.table_name === refTableName)
+
+    if (!currentTable || !refTable) {
+      console.warn(`Cross-table temporal filter references unknown table: ${refTableName}`)
+      return null
+    }
+
+    // Find relationship path
+    const path = this.findRelationshipPath(currentTableName, refTableName, allTablesMetadata)
+    if (!path || path.length === 0) {
+      console.warn(`No relationship path found between ${currentTableName} and ${refTableName}`)
+      return null
+    }
+
+    // Get qualified table name for reference table
+    const qualifiedRefTable = this.qualifyTableName(refTable.clickhouse_table_name)
+
+    // Build the temporal condition
+    const thisCol = filter.column!
+    const refCol = filter.temporal_reference_column!
+
+    // Helper function to wrap a column with COALESCE for stop_date columns
+    // When stop_date is NULL, treat it as equal to start_date (same-day event)
+    const wrapTemporalColumn = (tableAlias: string, colName: string): string => {
+      // If column is stop_date, use COALESCE to fall back to start_date
+      if (colName === 'stop_date') {
+        return `COALESCE(${tableAlias}.stop_date, ${tableAlias}.start_date)`
+      }
+      return `${tableAlias}.${colName}`
+    }
+
+    const baseColExpr = wrapTemporalColumn('base_table', thisCol)
+    const refColExpr = wrapTemporalColumn('ref_table', refCol)
+
+    let temporalCondition = ''
+    if (filter.operator === 'temporal_before') {
+      temporalCondition = `base_table.${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND ${baseColExpr} < ${refColExpr}`
+    } else if (filter.operator === 'temporal_after') {
+      temporalCondition = `base_table.${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND ${baseColExpr} > ${refColExpr}`
+    } else if (filter.operator === 'temporal_within') {
+      // Within N days: ABS(col1 - col2) <= threshold
+      if (filter.value === undefined) {
+        console.warn('temporal_within requires a value (days threshold)')
+        return null
+      }
+      const threshold = this.ensureNumeric(filter.value, 'temporal_within')
+      temporalCondition = `base_table.${thisCol} IS NOT NULL AND ref_table.${refCol} IS NOT NULL AND abs(${baseColExpr} - ${refColExpr}) <= ${threshold}`
+    } else if (filter.operator === 'temporal_overlaps') {
+      // Overlaps: start1 <= stop2 AND stop1 >= start2
+      // For cross-table: base_table's [start, stop] overlaps with ref_table's [start, stop]
+      // We need both start and stop columns from both tables
+      // Assume: thisCol = base start, temporal_reference_column = base stop (which maps to ref start)
+      // We need to find ref stop by looking at temporal metadata
+
+      // Get the paired column for the reference column (ref_table's stop_date)
+      const baseStartCol = thisCol
+      const baseStopCol = filter.temporal_reference_column
+
+      // For ref_table, we assume start_date and stop_date follow same pattern
+      // This requires knowledge of ref_table's temporal metadata
+      const refStartCol = refCol
+      const refStopCol = 'stop_date' // Assume stop_date is the paired column
+
+      const baseStartExpr = wrapTemporalColumn('base_table', baseStartCol)
+      const baseStopExpr = wrapTemporalColumn('base_table', baseStopCol)
+      const refStartExpr = wrapTemporalColumn('ref_table', refStartCol)
+      const refStopExpr = wrapTemporalColumn('ref_table', refStopCol)
+
+      // Overlap condition: base.start <= ref.stop AND base.stop >= ref.start
+      temporalCondition = `base_table.${baseStartCol} IS NOT NULL AND ref_table.${refStartCol} IS NOT NULL AND ${baseStartExpr} <= ${refStopExpr} AND ${baseStopExpr} >= ${refStartExpr}`
+    } else {
+      // Other temporal operators not yet supported for cross-table
+      return null
+    }
+
+    // Build JOIN conditions along the relationship path
+    const joinConditions: string[] = []
+
+    if (path.length === 1) {
+      // Direct single-hop relationship
+      const step = path[0]
+      if (step.direction === 'forward') {
+        // current_table.fk = ref_table.refCol
+        joinConditions.push(`base_table.${step.fk} = ref_table.${step.refCol}`)
+      } else {
+        // current_table.refCol = ref_table.fk
+        joinConditions.push(`base_table.${step.refCol} = ref_table.${step.fk}`)
+      }
+    } else if (path.length === 2 && path[0].direction === 'forward' && path[1].direction === 'backward') {
+      // Common case: sibling tables through parent (e.g., surgery -> patient <- treatment)
+      // Both tables have the same foreign key to the same parent
+      // Optimize: join directly via shared foreign key
+      if (path[0].fk === path[1].fk && path[0].refCol === path[1].refCol) {
+        // surgery.patient_id = treatment.patient_id
+        joinConditions.push(`base_table.${path[0].fk} = ref_table.${path[1].fk}`)
+      } else {
+        console.warn(`Unsupported 2-hop pattern: ${currentTableName} -> ${refTableName}`)
+        return null
+      }
+    } else {
+      // Multi-hop not yet supported
+      console.warn(`Multi-hop temporal relationships not yet supported: ${currentTableName} -> ${refTableName} (${path.length} hops)`)
+      return null
+    }
+
+    // Build EXISTS subquery
+    const exists = `EXISTS (
+      SELECT 1 FROM ${qualifiedRefTable} AS ref_table
+      WHERE ${joinConditions.join(' AND ')}
+        AND ${temporalCondition}
+    )`
+
+    return exists
   }
 
   private getFilterTableName(filter: Filter): string | undefined {
