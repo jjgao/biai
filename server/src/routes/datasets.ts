@@ -8,6 +8,7 @@ import dashboardService from '../services/dashboardService.js'
 import { unlink } from 'fs/promises'
 import { fetchFileFromUrl } from '../utils/urlFetcher.js'
 import { detectForeignKeys } from '../services/foreignKeyDetector.js'
+import { detectListColumns } from '../services/columnAnalyzer.js'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
 
@@ -199,6 +200,13 @@ router.post('/:id/tables/preview', upload.single('file'), async (req, res) => {
       existingTables
     )
 
+    // Detect potential list columns
+    const listSuggestions = detectListColumns(
+      parsedData.columns,
+      parsedData.rows,
+      100
+    ).filter(r => r.confidence !== 'low') // Only suggest high/medium confidence
+
     // Clean up temporary file
     await unlink(tempFilePath)
     tempFilePath = null
@@ -214,7 +222,8 @@ router.post('/:id/tables/preview', upload.single('file'), async (req, res) => {
         sampleRows,
         totalRows: parsedData.rowCount,
         detectedRelationships,
-        detectedSkipRows
+        detectedSkipRows,
+        listSuggestions
       }
     })
   } catch (error: any) {
@@ -247,7 +256,8 @@ router.post('/:id/tables', upload.single('file'), async (req, res) => {
       primaryKey,
       customMetadata = '{}',
       relationships = '[]',
-      columnMetadataConfig = '{}'
+      columnMetadataConfig = '{}',
+      listColumns = '{}'
     } = req.body
 
     // Handle either file upload or URL
@@ -294,11 +304,24 @@ router.post('/:id/tables', upload.single('file'), async (req, res) => {
       // Ignore parse errors, just don't use column metadata
     }
 
+    // Parse list columns configuration
+    let parsedListColumns: Map<string, 'python' | 'json'> | undefined
+    try {
+      const listColumnsObj = JSON.parse(listColumns)
+      if (Object.keys(listColumnsObj).length > 0) {
+        parsedListColumns = new Map(Object.entries(listColumnsObj)) as Map<string, 'python' | 'json'>
+      }
+    } catch (e) {
+      // Ignore parse errors, just don't use list columns
+    }
+
     const parsedData = await parseCSVFile(
       filePath,
       parseInt(skipRows, 10),
       delimiter,
-      parsedColumnMetadataConfig
+      parsedColumnMetadataConfig,
+      false, // not preview mode
+      parsedListColumns
     )
 
     // Parse JSON fields

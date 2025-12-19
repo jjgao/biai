@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS dataset_columns (
     suggested_chart String DEFAULT '',
     display_priority Int32 DEFAULT 0,
     is_hidden Boolean DEFAULT false,
+    is_list_column Boolean DEFAULT false,
+    list_syntax String DEFAULT '',
     created_at DateTime DEFAULT now()
 ) ENGINE = MergeTree()
 ORDER BY (dataset_id, table_id, column_index);

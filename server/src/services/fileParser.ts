@@ -1,16 +1,19 @@
 import { parse } from 'csv-parse'
 import { createReadStream } from 'fs'
 import { Readable } from 'stream'
+import { parseListValue } from '../utils/listParser.js'
 
 export interface ColumnMetadata {
   name: string
-  type: 'String' | 'Int32' | 'Float64' | 'DateTime' | 'Boolean'
+  type: 'String' | 'Int32' | 'Float64' | 'DateTime' | 'Boolean' | 'Array(String)'
   nullable: boolean
   index: number
   displayName?: string
   description?: string
   userDataType?: string
   userPriority?: number
+  isListColumn?: boolean
+  listSyntax?: 'python' | 'json'
 }
 
 export interface ParsedData {
@@ -20,7 +23,15 @@ export interface ParsedData {
 }
 
 // Infer ClickHouse type from sample values
-function inferType(values: string[]): 'String' | 'Int32' | 'Float64' | 'DateTime' | 'Boolean' {
+function inferType(
+  values: string[],
+  isListColumn: boolean = false
+): 'String' | 'Int32' | 'Float64' | 'DateTime' | 'Boolean' | 'Array(String)' {
+  // If it's a list column, return Array type
+  if (isListColumn) {
+    return 'Array(String)'
+  }
+
   const nonEmptyValues = values.filter(v => v !== '' && v !== null && v !== undefined)
 
   if (nonEmptyValues.length === 0) return 'String'
@@ -147,7 +158,8 @@ export async function parseCSVFile(
   skipRows: number = 0,
   delimiter: string = '\t',
   columnMetadataConfig?: ColumnMetadataConfig,
-  previewOnly: boolean = false
+  previewOnly: boolean = false,
+  listColumns?: Map<string, 'python' | 'json'>
 ): Promise<ParsedData> {
   return new Promise((resolve, reject) => {
     const rows: any[][] = []
@@ -197,11 +209,17 @@ export async function parseCSVFile(
           const sampleValues = rows.slice(0, sampleSize).map(row => row[index] || '')
           const hasNulls = sampleValues.some(v => v === '' || v === null || v === undefined || v.toLowerCase() === 'na')
 
+          const columnName = generateColumnIdentifier(name, index, usedColumnNames, columnNameCounts)
+          const isListColumn = listColumns?.has(columnName) || false
+          const listSyntax = listColumns?.get(columnName)
+
           const column: ColumnMetadata = {
-            name: generateColumnIdentifier(name, index, usedColumnNames, columnNameCounts),
-            type: inferType(sampleValues),
+            name: columnName,
+            type: inferType(sampleValues, isListColumn),
             nullable: hasNulls,
-            index
+            index,
+            isListColumn,
+            listSyntax
           }
 
           // Extract column metadata from specified rows
@@ -228,6 +246,31 @@ export async function parseCSVFile(
           return column
         })
 
+        // Parse list columns if specified
+        if (listColumns && listColumns.size > 0) {
+          const listColumnIndices = new Map<number, 'python' | 'json'>()
+          columns.forEach(col => {
+            if (col.isListColumn && col.listSyntax) {
+              listColumnIndices.set(col.index, col.listSyntax)
+            }
+          })
+
+          // Parse list values in each row
+          if (listColumnIndices.size > 0) {
+            rows.forEach(row => {
+              listColumnIndices.forEach((syntax, colIndex) => {
+                const value = row[colIndex]
+                if (value && typeof value === 'string' && value.trim() !== '') {
+                  const parseResult = parseListValue(value, syntax)
+                  row[colIndex] = parseResult.success ? parseResult.items : null
+                } else {
+                  row[colIndex] = null
+                }
+              })
+            })
+          }
+        }
+
         resolve({
           columns,
           rows,
@@ -243,7 +286,8 @@ export async function parseCSVFile(
 export async function parseCSVBuffer(
   buffer: Buffer,
   skipRows: number = 0,
-  delimiter: string = '\t'
+  delimiter: string = '\t',
+  listColumns?: Map<string, 'python' | 'json'>
 ): Promise<ParsedData> {
   return new Promise((resolve, reject) => {
     const rows: any[][] = []
@@ -281,13 +325,44 @@ export async function parseCSVBuffer(
           const sampleValues = rows.slice(0, sampleSize).map(row => row[index] || '')
           const hasNulls = sampleValues.some(v => v === '' || v === null || v === undefined || v.toLowerCase() === 'na')
 
+          const columnName = generateColumnIdentifier(name, index, usedColumnNames, columnNameCounts)
+          const isListColumn = listColumns?.has(columnName) || false
+          const listSyntax = listColumns?.get(columnName)
+
           return {
-            name: generateColumnIdentifier(name, index, usedColumnNames, columnNameCounts),
-            type: inferType(sampleValues),
+            name: columnName,
+            type: inferType(sampleValues, isListColumn),
             nullable: hasNulls,
-            index
+            index,
+            isListColumn,
+            listSyntax
           }
         })
+
+        // Parse list columns if specified
+        if (listColumns && listColumns.size > 0) {
+          const listColumnIndices = new Map<number, 'python' | 'json'>()
+          columns.forEach(col => {
+            if (col.isListColumn && col.listSyntax) {
+              listColumnIndices.set(col.index, col.listSyntax)
+            }
+          })
+
+          // Parse list values in each row
+          if (listColumnIndices.size > 0) {
+            rows.forEach(row => {
+              listColumnIndices.forEach((syntax, colIndex) => {
+                const value = row[colIndex]
+                if (value && typeof value === 'string' && value.trim() !== '') {
+                  const parseResult = parseListValue(value, syntax)
+                  row[colIndex] = parseResult.success ? parseResult.items : null
+                } else {
+                  row[colIndex] = null
+                }
+              })
+            })
+          }
+        }
 
         resolve({
           columns,

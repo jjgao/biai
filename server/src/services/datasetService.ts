@@ -304,7 +304,9 @@ export class DatasetService {
         max_value: analysis.max_value,
         suggested_chart: analysis.suggested_chart,
         display_priority: finalPriority,
-        is_hidden: analysis.is_hidden
+        is_hidden: analysis.is_hidden,
+        is_list_column: col.isListColumn || false,
+        list_syntax: col.listSyntax || ''
       })
     }
 
@@ -352,9 +354,19 @@ export class DatasetService {
 
   private async createDynamicTable(databaseName: string, tableName: string, columns: ColumnMetadata[], primaryKey?: string): Promise<void> {
     const columnDefs = columns.map(col => {
-      // Make all columns nullable except the primary key
-      const shouldBeNullable = col.name !== primaryKey
-      const columnType = shouldBeNullable ? 'Nullable(' + col.type + ')' : col.type
+      let columnType: string
+
+      // Handle list/array columns
+      if (col.isListColumn || col.type === 'Array(String)') {
+        columnType = col.name !== primaryKey
+          ? 'Nullable(Array(String))'
+          : 'Array(String)'
+      } else {
+        // Regular columns - make nullable except for primary key
+        const shouldBeNullable = col.name !== primaryKey
+        columnType = shouldBeNullable ? `Nullable(${col.type})` : col.type
+      }
+
       return `${col.name} ${columnType}`
     }).join(',\n    ')
 
@@ -386,7 +398,11 @@ export class DatasetService {
           return
         }
 
-        if (col.type === 'Int32') {
+        // Handle list/array columns
+        if (col.isListColumn || col.type === 'Array(String)') {
+          // Value should already be parsed as array from parseCSVFile
+          obj[col.name] = Array.isArray(value) ? value : null
+        } else if (col.type === 'Int32') {
           const parsed = parseInt(value, 10)
           obj[col.name] = isNaN(parsed) ? null : parsed
         } else if (col.type === 'Float64') {
