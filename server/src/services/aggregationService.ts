@@ -516,10 +516,13 @@ class AggregationService {
       const isCrossTable = !aliasOverride && targetTable && currentTableName && allTablesMetadata && targetTable !== currentTableName
 
       // Check for cross-table temporal filter
+      // IMPORTANT: Only process cross-table temporal filters on the table they were created on
+      const filterTableName = (filter as any).tableName
       const isCrossTableTemporal = currentTableName && allTablesMetadata &&
         filter.operator?.startsWith('temporal_') &&
         filter.temporal_reference_table &&
-        filter.temporal_reference_table !== currentTableName
+        filter.temporal_reference_table !== currentTableName &&
+        (!filterTableName || filterTableName === currentTableName)  // Only apply to origin table
 
       // Special handling for NOT filters with parent-table counting
       // When counting by parent with a NOT filter on a local (child) column,
