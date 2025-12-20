@@ -434,31 +434,33 @@ export class DatasetService {
 
     const datasets = await result.json<Dataset>()
 
-    // Load tables for all datasets
-    for (const dataset of datasets) {
-      const connectionSettings = this.getDatasetConnectionSettings(dataset)
+    // Load tables for all datasets in parallel (performance optimization)
+    await Promise.all(
+      datasets.map(async (dataset) => {
+        const connectionSettings = this.getDatasetConnectionSettings(dataset)
 
-      if (dataset.database_type === 'connected' && dataset.database_name) {
-        if (connectionSettings?.host) {
-          try {
-            dataset.tables = await this.getDatabaseTables(
-              dataset.database_name,
-              connectionSettings,
-              dataset.dataset_id
-            )
-          } catch (error) {
-            console.warn(`Remote table sync failed for dataset ${dataset.dataset_id}:`, error)
+        if (dataset.database_type === 'connected' && dataset.database_name) {
+          if (connectionSettings?.host) {
+            try {
+              dataset.tables = await this.getDatabaseTables(
+                dataset.database_name,
+                connectionSettings,
+                dataset.dataset_id
+              )
+            } catch (error) {
+              console.warn(`Remote table sync failed for dataset ${dataset.dataset_id}:`, error)
+              dataset.tables = await this.getDatasetTables(dataset.dataset_id)
+              this.updateCustomMetadata(dataset, { remote_table_sync_failed: true })
+            }
+          } else {
             dataset.tables = await this.getDatasetTables(dataset.dataset_id)
-            this.updateCustomMetadata(dataset, { remote_table_sync_failed: true })
+            this.updateCustomMetadata(dataset, { remote_connection_missing: true })
           }
         } else {
           dataset.tables = await this.getDatasetTables(dataset.dataset_id)
-          this.updateCustomMetadata(dataset, { remote_connection_missing: true })
         }
-      } else {
-        dataset.tables = await this.getDatasetTables(dataset.dataset_id)
-      }
-    }
+      })
+    )
 
     return datasets
   }
