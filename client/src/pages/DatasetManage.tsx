@@ -102,6 +102,7 @@ function DatasetManage() {
   const [referencedColumnsLoading, setReferencedColumnsLoading] = useState(false)
   const [relationshipSaving, setRelationshipSaving] = useState(false)
   const [primaryKeySaving, setPrimaryKeySaving] = useState(false)
+  const [selectedListColumns, setSelectedListColumns] = useState<Map<string, 'python' | 'json'>>(new Map())
 
   useEffect(() => {
     fetchDataset()
@@ -223,6 +224,16 @@ function DatasetManage() {
       setPreviewData(response.data.preview)
       setConfirmedRelationships(response.data.preview.detectedRelationships || [])
 
+      // Auto-select high-confidence list columns
+      const listSuggestions = response.data.preview.listSuggestions || []
+      const autoSelectedLists = new Map<string, 'python' | 'json'>()
+      listSuggestions.forEach((suggestion: any) => {
+        if (suggestion.confidence === 'high') {
+          autoSelectedLists.set(suggestion.columnName, suggestion.listSyntax)
+        }
+      })
+      setSelectedListColumns(autoSelectedLists)
+
       // Auto-detect skipRows if not manually set (still at default 0)
       if (skipRows === '0' && response.data.preview.detectedSkipRows !== undefined) {
         setSkipRows(String(response.data.preview.detectedSkipRows))
@@ -276,6 +287,12 @@ function DatasetManage() {
         referenced_column: rel.referencedColumn
       }))
       formData.append('relationships', JSON.stringify(relationships))
+    }
+
+    // Add selected list columns
+    if (selectedListColumns.size > 0) {
+      const listColumnsObj = Object.fromEntries(selectedListColumns)
+      formData.append('listColumns', JSON.stringify(listColumnsObj))
     }
 
     try {
@@ -1044,6 +1061,86 @@ function DatasetManage() {
                       </details>
                     )}
                   </div>
+
+                  {/* List Columns Configuration */}
+                  {previewData.listSuggestions && previewData.listSuggestions.length > 0 && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                        List Columns (Arrays)
+                      </label>
+                      <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.5rem' }}>
+                        These columns appear to contain list values. Select which ones to parse as arrays:
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {previewData.listSuggestions.map((suggestion: any, idx: number) => {
+                          const isSelected = selectedListColumns.has(suggestion.columnName)
+                          const currentSyntax = selectedListColumns.get(suggestion.columnName) || suggestion.listSyntax
+
+                          return (
+                            <div key={idx} style={{
+                              padding: '0.75rem',
+                              background: isSelected ? '#e8f5e9' : 'white',
+                              borderRadius: '4px',
+                              border: isSelected ? '1px solid #4CAF50' : '1px solid #ddd'
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', flex: 1 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      const newMap = new Map(selectedListColumns)
+                                      if (e.target.checked) {
+                                        newMap.set(suggestion.columnName, suggestion.listSyntax)
+                                      } else {
+                                        newMap.delete(suggestion.columnName)
+                                      }
+                                      setSelectedListColumns(newMap)
+                                    }}
+                                  />
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontWeight: 'bold' }}>{suggestion.columnName}</div>
+                                    <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
+                                      Confidence: <span style={{
+                                        padding: '0.125rem 0.375rem',
+                                        borderRadius: '3px',
+                                        background: suggestion.confidence === 'high' ? '#4CAF50' : '#FF9800',
+                                        color: 'white',
+                                        fontWeight: 'bold'
+                                      }}>{suggestion.confidence}</span>
+                                      {' • '}
+                                      Avg {suggestion.avgItemCount} items/row
+                                      {' • '}
+                                      {suggestion.uniqueItemCount} unique values
+                                    </div>
+                                  </div>
+                                </label>
+                                {isSelected && (
+                                  <select
+                                    value={currentSyntax}
+                                    onChange={(e) => {
+                                      const newMap = new Map(selectedListColumns)
+                                      newMap.set(suggestion.columnName, e.target.value as 'python' | 'json')
+                                      setSelectedListColumns(newMap)
+                                    }}
+                                    style={{
+                                      padding: '0.375rem 0.5rem',
+                                      borderRadius: '4px',
+                                      border: '1px solid #ddd',
+                                      fontSize: '0.75rem'
+                                    }}
+                                  >
+                                    <option value="python">Python ['...']</option>
+                                    <option value="json">JSON ["..."]</option>
+                                  </select>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Sample Data */}
                   <details open>
