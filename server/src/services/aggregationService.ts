@@ -780,7 +780,8 @@ class AggregationService {
     filters: Filter[] | Filter = [],
     currentTableName?: string,
     allTablesMetadata?: TableMetadata[],
-    countBy?: CountByConfig
+    countBy?: CountByConfig,
+    listColumns?: Set<string>
   ): Promise<ColumnAggregation> {
     // Get the ClickHouse table name
     const tableResult = await clickhouseClient.query({
@@ -802,22 +803,25 @@ class AggregationService {
 
     const clickhouseTableName = tables[0].clickhouse_table_name
 
-    // Fetch all list columns for this table (for filtering support)
-    const listColumnsResult = await clickhouseClient.query({
-      query: `
-        SELECT column_name, is_list_column
-        FROM biai.dataset_columns
-        WHERE dataset_id = {datasetId:String}
-          AND table_id = {tableId:String}
-          AND is_list_column = true
-      `,
-      query_params: { datasetId, tableId },
-      format: 'JSONEachRow'
-    })
+    // Fetch all list columns for this table (for filtering support) if not provided
+    let resolvedListColumns = listColumns
+    if (!resolvedListColumns) {
+      const listColumnsResult = await clickhouseClient.query({
+        query: `
+          SELECT column_name, is_list_column
+          FROM biai.dataset_columns
+          WHERE dataset_id = {datasetId:String}
+            AND table_id = {tableId:String}
+            AND is_list_column = true
+        `,
+        query_params: { datasetId, tableId },
+        format: 'JSONEachRow'
+      })
 
-    const listColumnRecords = await listColumnsResult.json<{ column_name: string; is_list_column: boolean }>()
-    const listColumns = new Set(listColumnRecords.map(r => r.column_name))
-    const isListColumn = listColumns.has(columnName)
+      const listColumnRecords = await listColumnsResult.json<{ column_name: string; is_list_column: boolean }>()
+      resolvedListColumns = new Set(listColumnRecords.map(r => r.column_name))
+    }
+    const isListColumn = resolvedListColumns.has(columnName)
     const qualifiedTableName = this.qualifyTableName(clickhouseTableName)
     const totalRows = tables[0].row_count
     let effectiveTableName = currentTableName || tables[0].table_name
@@ -1470,6 +1474,21 @@ class AggregationService {
 
     const columns = await columnsResult.json<{ column_name: string; display_type: string; is_hidden: boolean }>()
 
+    // Fetch list columns once for the entire table (performance optimization)
+    const listColumnsResult = await clickhouseClient.query({
+      query: `
+        SELECT column_name, is_list_column
+        FROM biai.dataset_columns
+        WHERE dataset_id = {datasetId:String}
+          AND table_id = {tableId:String}
+          AND is_list_column = true
+      `,
+      query_params: { datasetId, tableId },
+      format: 'JSONEachRow'
+    })
+    const listColumnRecords = await listColumnsResult.json<{ column_name: string; is_list_column: boolean }>()
+    const listColumns = new Set(listColumnRecords.map(r => r.column_name))
+
     // Get aggregations for each column in parallel
     const aggregations = await Promise.all(
       columns.map(col =>
@@ -1481,7 +1500,8 @@ class AggregationService {
           filters,
           currentTableName,
           allTablesMetadata,
-          countBy
+          countBy,
+          listColumns
         )
       )
     )
