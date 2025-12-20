@@ -234,6 +234,11 @@ function DatasetManage() {
       })
       setSelectedListColumns(autoSelectedLists)
 
+      // Auto-detect delimiter if detected
+      if (response.data.preview.detectedDelimiter !== undefined) {
+        setDelimiter(response.data.preview.detectedDelimiter)
+      }
+
       // Auto-detect skipRows if not manually set (still at default 0)
       if (skipRows === '0' && response.data.preview.detectedSkipRows !== undefined) {
         setSkipRows(String(response.data.preview.detectedSkipRows))

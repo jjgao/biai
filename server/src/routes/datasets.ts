@@ -1,6 +1,6 @@
 import express from 'express'
 import multer from 'multer'
-import { parseCSVFile, detectSkipRows } from '../services/fileParser.js'
+import { parseCSVFile, detectSkipRows, detectDelimiter } from '../services/fileParser.js'
 import datasetService from '../services/datasetService.js'
 import aggregationService from '../services/aggregationService.js'
 import { parseCountByQuery } from '../utils/countBy.js'
@@ -169,12 +169,25 @@ router.post('/:id/tables/preview', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Either file upload or fileUrl is required' })
     }
 
+    // Auto-detect delimiter if not explicitly provided
+    let finalDelimiter = delimiter
+    let detectedDelimiter: string | undefined
+
+    if (!req.body.delimiter || delimiter === '\t') {
+      // Only auto-detect if delimiter wasn't explicitly set by user
+      const detected = await detectDelimiter(filePath)
+      if (detected !== '\t') {
+        detectedDelimiter = detected
+        finalDelimiter = detected
+      }
+    }
+
     // Auto-detect skipRows if set to 0 - check if first rows start with #
     let finalSkipRows = parseInt(skipRows, 10)
     let detectedSkipRows: number | undefined
 
     if (finalSkipRows === 0) {
-      const detectedRows = await detectSkipRows(filePath, delimiter)
+      const detectedRows = await detectSkipRows(filePath, finalDelimiter)
       if (detectedRows > 0) {
         detectedSkipRows = detectedRows
         finalSkipRows = detectedRows
@@ -185,7 +198,7 @@ router.post('/:id/tables/preview', upload.single('file'), async (req, res) => {
     const parsedData = await parseCSVFile(
       filePath,
       finalSkipRows,
-      delimiter,
+      finalDelimiter,
       undefined,
       true // previewOnly mode
     )
@@ -223,6 +236,7 @@ router.post('/:id/tables/preview', upload.single('file'), async (req, res) => {
         totalRows: parsedData.rowCount,
         detectedRelationships,
         detectedSkipRows,
+        detectedDelimiter,
         listSuggestions
       }
     })

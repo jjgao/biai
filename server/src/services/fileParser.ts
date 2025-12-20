@@ -108,6 +108,84 @@ function generateColumnIdentifier(
 }
 
 /**
+ * Detects the most likely delimiter by analyzing the first few lines
+ */
+export async function detectDelimiter(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fs = require('fs')
+    const readline = require('readline')
+
+    const delimiters = [',', '\t', ';', '|']
+    const delimiterCounts: Record<string, number[]> = {
+      ',': [],
+      '\t': [],
+      ';': [],
+      '|': []
+    }
+
+    const rl = readline.createInterface({
+      input: fs.createReadStream(filePath),
+      crlfDelay: Infinity
+    })
+
+    let lineCount = 0
+    const maxLines = 10 // Analyze first 10 lines
+
+    rl.on('line', (line: string) => {
+      if (lineCount >= maxLines) {
+        rl.close()
+        return
+      }
+
+      // Skip comment lines
+      if (line.trim().startsWith('#')) {
+        return
+      }
+
+      // Count occurrences of each delimiter
+      delimiters.forEach(delimiter => {
+        const count = (line.match(new RegExp(delimiter === '\t' ? '\\t' : `\\${delimiter}`, 'g')) || []).length
+        delimiterCounts[delimiter].push(count)
+      })
+
+      lineCount++
+    })
+
+    rl.on('close', () => {
+      // Find the delimiter with the most consistent and highest count
+      let bestDelimiter = '\t' // Default to tab
+      let bestScore = 0
+
+      delimiters.forEach(delimiter => {
+        const counts = delimiterCounts[delimiter]
+        if (counts.length === 0) return
+
+        // Calculate average count
+        const avg = counts.reduce((sum, c) => sum + c, 0) / counts.length
+
+        // Calculate consistency (lower variance is better)
+        const variance = counts.reduce((sum, c) => sum + Math.pow(c - avg, 2), 0) / counts.length
+        const consistency = avg > 0 ? avg / (1 + Math.sqrt(variance)) : 0
+
+        // Score: prefer delimiters that appear frequently and consistently
+        const score = consistency * avg
+
+        if (score > bestScore && avg >= 1) {
+          bestScore = score
+          bestDelimiter = delimiter
+        }
+      })
+
+      resolve(bestDelimiter)
+    })
+
+    rl.on('error', (error: Error) => {
+      reject(error)
+    })
+  })
+}
+
+/**
  * Detects how many rows to skip by counting rows that start with #
  */
 export async function detectSkipRows(
