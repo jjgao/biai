@@ -103,6 +103,8 @@ function DatasetManage() {
   const [relationshipSaving, setRelationshipSaving] = useState(false)
   const [primaryKeySaving, setPrimaryKeySaving] = useState(false)
   const [selectedListColumns, setSelectedListColumns] = useState<Map<string, 'python' | 'json'>>(new Map())
+  const [wasDelimiterDetected, setWasDelimiterDetected] = useState(false)
+  const [detectedDelimiterName, setDetectedDelimiterName] = useState<string>('')
 
   useEffect(() => {
     fetchDataset()
@@ -179,6 +181,9 @@ function DatasetManage() {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0]
       setSelectedFile(file)
+      // Reset auto-detect indicator when new file is selected
+      setWasDelimiterDetected(false)
+      setDetectedDelimiterName('')
       if (!tableName) {
         const name = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9_]/gi, '_').toLowerCase()
         setTableName(name)
@@ -236,7 +241,18 @@ function DatasetManage() {
 
       // Auto-detect delimiter if detected
       if (response.data.preview.detectedDelimiter !== undefined) {
-        setDelimiter(response.data.preview.detectedDelimiter)
+        const detected = response.data.preview.detectedDelimiter
+        setDelimiter(detected)
+        setWasDelimiterDetected(true)
+
+        // Set human-readable name
+        const delimiterNames: Record<string, string> = {
+          ',': 'Comma',
+          '\t': 'Tab',
+          ';': 'Semicolon',
+          '|': 'Pipe'
+        }
+        setDetectedDelimiterName(delimiterNames[detected] || detected)
       }
 
       // Auto-detect skipRows if not manually set (still at default 0)
@@ -802,7 +818,13 @@ function DatasetManage() {
                   <label style={{ display: 'block', marginBottom: '0.5rem' }}>Delimiter</label>
                   <select
                     value={delimiter}
-                    onChange={(e) => setDelimiter(e.target.value)}
+                    onChange={(e) => {
+                      setDelimiter(e.target.value)
+                      // If user manually changes delimiter, clear auto-detect indicator
+                      if (wasDelimiterDetected) {
+                        setWasDelimiterDetected(false)
+                      }
+                    }}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
                   >
                     <option value="\t">Tab</option>
@@ -810,6 +832,21 @@ function DatasetManage() {
                     <option value=";">Semicolon</option>
                     <option value="|">Pipe</option>
                   </select>
+                  {wasDelimiterDetected && (
+                    <div
+                      style={{
+                        marginTop: '0.25rem',
+                        fontSize: '0.75rem',
+                        color: '#4CAF50',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem'
+                      }}
+                    >
+                      <span>✓</span>
+                      <span>Auto-detected: {detectedDelimiterName}</span>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem' }}>Primary Key (optional)</label>

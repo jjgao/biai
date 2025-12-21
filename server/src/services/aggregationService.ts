@@ -616,14 +616,12 @@ class AggregationService {
       case 'eq':
         if (isListColumn) {
           // For list columns, use has() to check if array contains the value
-          if (filter.value === '(Empty)' || filter.value === '') {
-            return `(empty(${col}) OR isNull(${col}))`
+          // Arrays cannot be null in ClickHouse, only empty
+          if (filter.value === '(Empty)' || filter.value === '' || filter.value === null) {
+            return `empty(${col})`
           }
           if (filter.value === '(N/A)') {
             return `has(${col}, 'N/A')`
-          }
-          if (filter.value === null) {
-            return `isNull(${col})`
           }
           if (typeof filter.value === 'string') {
             return `has(${col}, '${filter.value.replace(/'/g, "''")}')`
@@ -656,16 +654,14 @@ class AggregationService {
       case 'in':
         if (isListColumn) {
           // For list columns, use has() for each value with OR logic
+          // Arrays cannot be null in ClickHouse, only empty
           const values = Array.isArray(filter.value) ? filter.value : [filter.value]
           const conditions = values.map(v => {
-            if (v === '(Empty)' || v === '') {
-              return `(empty(${col}) OR isNull(${col}))`
+            if (v === '(Empty)' || v === '' || v === null) {
+              return `empty(${col})`
             }
             if (v === '(N/A)') {
               return `has(${col}, 'N/A')`
-            }
-            if (v === null) {
-              return `isNull(${col})`
             }
             if (typeof v === 'string') {
               return `has(${col}, '${v.replace(/'/g, "''")}')`

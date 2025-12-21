@@ -1,6 +1,7 @@
 import { parse } from 'csv-parse'
 import { createReadStream } from 'fs'
 import { Readable } from 'stream'
+import * as readline from 'readline'
 import { parseListValue } from '../utils/listParser.js'
 
 export interface ColumnMetadata {
@@ -112,9 +113,6 @@ function generateColumnIdentifier(
  */
 export async function detectDelimiter(filePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const fs = require('fs')
-    const readline = require('readline')
-
     const delimiters = [',', '\t', ';', '|']
     const delimiterCounts: Record<string, number[]> = {
       ',': [],
@@ -124,7 +122,7 @@ export async function detectDelimiter(filePath: string): Promise<string> {
     }
 
     const rl = readline.createInterface({
-      input: fs.createReadStream(filePath),
+      input: createReadStream(filePath),
       crlfDelay: Infinity
     })
 

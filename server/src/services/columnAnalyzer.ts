@@ -61,14 +61,21 @@ async function getColumnStats(
   columnName: string,
   columnType: string
 ): Promise<ColumnStats> {
-  // Handle nullable types
+  // Handle different column types
   const isNumericType = columnType.includes('Int') || columnType.includes('Float') || columnType.includes('Decimal')
+  const isArrayType = columnType.startsWith('Array(')
   const qualifiedTableName = qualifyTableName(tableName)
 
   // Get unique count and null count
-  const nullCondition = isNumericType
-    ? `isNull(${columnName})`
-    : `isNull(${columnName}) OR ${columnName} = ''`
+  // Arrays cannot be null in ClickHouse, only empty
+  let nullCondition: string
+  if (isArrayType) {
+    nullCondition = `empty(${columnName})`
+  } else if (isNumericType) {
+    nullCondition = `isNull(${columnName})`
+  } else {
+    nullCondition = `isNull(${columnName}) OR ${columnName} = ''`
+  }
 
   const countQuery = `
     SELECT
@@ -93,9 +100,14 @@ async function getColumnStats(
       : { unique_count: 0, null_count: 0, total_count: 0 }
 
   // Get sample values (up to 100)
-  const whereCondition = isNumericType
-    ? `${columnName} IS NOT NULL`
-    : `${columnName} IS NOT NULL AND ${columnName} != ''`
+  let whereCondition: string
+  if (isArrayType) {
+    whereCondition = `NOT empty(${columnName})`
+  } else if (isNumericType) {
+    whereCondition = `${columnName} IS NOT NULL`
+  } else {
+    whereCondition = `${columnName} IS NOT NULL AND ${columnName} != ''`
+  }
 
   const sampleQuery = `
     SELECT DISTINCT ${columnName}

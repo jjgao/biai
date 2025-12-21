@@ -358,9 +358,8 @@ export class DatasetService {
 
       // Handle list/array columns
       if (col.isListColumn || col.type === 'Array(String)') {
-        columnType = col.name !== primaryKey
-          ? 'Nullable(Array(String))'
-          : 'Array(String)'
+        // Array types cannot be nullable in ClickHouse
+        columnType = 'Array(String)'
       } else {
         // Regular columns - make nullable except for primary key
         const shouldBeNullable = col.name !== primaryKey
@@ -393,16 +392,26 @@ export class DatasetService {
       columns.forEach((col, index) => {
         let value = row[index]
 
+        // Handle list/array columns first (arrays cannot be null in ClickHouse)
+        if (col.isListColumn || col.type === 'Array(String)') {
+          // Empty values become empty arrays, not null
+          if (value === '' || value === null || value === undefined || value === 'NA') {
+            obj[col.name] = []
+            return
+          }
+          // Value should already be parsed as array from parseCSVFile
+          obj[col.name] = Array.isArray(value) ? value : []
+          return
+        }
+
+        // Handle empty values for non-array columns
         if (value === '' || value === null || value === undefined || value === 'NA') {
           obj[col.name] = null
           return
         }
 
-        // Handle list/array columns
-        if (col.isListColumn || col.type === 'Array(String)') {
-          // Value should already be parsed as array from parseCSVFile
-          obj[col.name] = Array.isArray(value) ? value : null
-        } else if (col.type === 'Int32') {
+        // Handle other column types
+        if (col.type === 'Int32') {
           const parsed = parseInt(value, 10)
           obj[col.name] = isNaN(parsed) ? null : parsed
         } else if (col.type === 'Float64') {
