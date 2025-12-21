@@ -338,9 +338,9 @@ export async function parseCSVFile(
                 const value = row[colIndex]
                 if (value && typeof value === 'string' && value.trim() !== '') {
                   const parseResult = parseListValue(value, syntax)
-                  row[colIndex] = parseResult.success ? parseResult.items : null
+                  row[colIndex] = parseResult.success ? parseResult.items : []
                 } else {
-                  row[colIndex] = null
+                  row[colIndex] = []
                 }
               })
             })
@@ -431,9 +431,9 @@ export async function parseCSVBuffer(
                 const value = row[colIndex]
                 if (value && typeof value === 'string' && value.trim() !== '') {
                   const parseResult = parseListValue(value, syntax)
-                  row[colIndex] = parseResult.success ? parseResult.items : null
+                  row[colIndex] = parseResult.success ? parseResult.items : []
                 } else {
-                  row[colIndex] = null
+                  row[colIndex] = []
                 }
               })
             })

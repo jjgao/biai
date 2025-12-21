@@ -83,6 +83,12 @@ For end-users working with the web interface:
 - **Table Relationships**: Define and track foreign key relationships between tables
 - **Dynamic Schema**: Automatic type inference from CSV/TSV files
 - **File Upload**: Support for CSV, TSV with configurable delimiters
+- **List/Array Values**: Full support for list columns in CSV files
+  - Auto-detection of list columns (Python `['item1', 'item2']` and JSON `["item1", "item2"]` syntax)
+  - Stores as ClickHouse Array(String) columns for efficient querying
+  - Visualize individual list items in pie charts
+  - Filter by individual items with multi-select OR logic
+- **Auto-Delimiter Detection**: Automatically detects CSV delimiters (comma, tab, semicolon, pipe) with visual feedback
 - **Data Preview**: View table data with pagination
 - **Custom Metadata**: Store domain-specific fields alongside standard metadata
 - **Interactive Data Exploration**: Filter and visualize data with automatic chart selection
@@ -157,8 +163,10 @@ relationship:
 The system uses ClickHouse with the following metadata tables:
 - `datasets_metadata` - Dataset info (name, description, tags, source, citation, references, custom metadata)
 - `dataset_tables` - Table info (name, row count, schema, primary key, custom metadata)
-- `dataset_columns` - Column info (name, type, nullability)
+- `dataset_columns` - Column info (name, type, nullability, list column metadata)
 - `table_relationships` - Foreign key relationships between tables
+
+Data tables support Array(String) columns for storing list values.
 
 ## Next Steps
 
