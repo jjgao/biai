@@ -93,6 +93,8 @@ interface ColumnMetadata {
   suggested_chart: string
   display_priority: number
   is_hidden: boolean
+  is_list_column?: boolean
+  list_syntax?: string
 }
 
 interface CategoryCount {
@@ -1833,12 +1835,14 @@ function DatasetExplorer() {
     title,
     tooltip,
     countIndicator,
-    actions
+    actions,
+    isListColumn
   }: {
     title: string
     tooltip?: string
     countIndicator: React.ReactNode
     actions?: React.ReactNode
+    isListColumn?: boolean
   }) => (
     <div
       style={{
@@ -1865,6 +1869,18 @@ function DatasetExplorer() {
           title={tooltip}
         >
           {title}
+          {isListColumn && (
+            <span
+              style={{
+                marginLeft: '0.25rem',
+                fontSize: '0.65rem',
+                opacity: 0.7
+              }}
+              title="List column - items can appear in multiple rows"
+            >
+              📋
+            </span>
+          )}
         </h4>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
@@ -3052,7 +3068,8 @@ const renderNumericFilterMenu = (
             title: metadata?.display_name || title,
             tooltip: tooltipText,
             countIndicator,
-            actions: actionButtons
+            actions: actionButtons,
+            isListColumn: metadata?.is_list_column || false
           })}
           <div
             style={{
@@ -3099,7 +3116,8 @@ const renderNumericFilterMenu = (
           title: metadata?.display_name || title,
           tooltip: tooltipText,
           countIndicator,
-          actions: actionButtons
+          actions: actionButtons,
+          isListColumn: metadata?.is_list_column || false
         })}
         <div
           style={{
@@ -3347,7 +3365,8 @@ const renderNumericFilterMenu = (
             title: metadata?.display_name || title,
             tooltip: tooltipText,
             countIndicator,
-            actions: actionButtons
+            actions: actionButtons,
+            isListColumn: metadata?.is_list_column || false
           })}
           <div
             style={{
@@ -3392,7 +3411,8 @@ const renderNumericFilterMenu = (
           title: metadata?.display_name || title,
           tooltip: tooltipText,
           countIndicator,
-          actions: actionButtons
+          actions: actionButtons,
+          isListColumn: metadata?.is_list_column || false
         })}
         <Plot
           data={[{
@@ -3593,7 +3613,8 @@ const renderNumericFilterMenu = (
             title: metadata?.display_name || title,
             tooltip: tooltipText,
             countIndicator,
-            actions: actionButtons
+            actions: actionButtons,
+            isListColumn: metadata?.is_list_column || false
           })}
           <div
             style={{
@@ -3635,7 +3656,8 @@ const renderNumericFilterMenu = (
           title: metadata?.display_name || title,
           tooltip: tooltipText,
           countIndicator,
-          actions: actionButtons
+          actions: actionButtons,
+          isListColumn: metadata?.is_list_column || false
         })}
         <Plot
           data={[{
@@ -3877,7 +3899,8 @@ const renderNumericFilterMenu = (
           title: metadata?.display_name || title,
           tooltip: tooltipText,
           countIndicator,
-          actions: actionButtons
+          actions: actionButtons,
+          isListColumn: metadata?.is_list_column || false
         })}
         <Plot
           data={[{
@@ -4160,7 +4183,8 @@ const renderNumericFilterMenu = (
           title: metadata?.display_name || title,
           tooltip: tooltipText,
           countIndicator,
-          actions: actionButtons
+          actions: actionButtons,
+          isListColumn: metadata?.is_list_column || false
         })}
         <div style={{ display: 'grid', gridTemplateColumns: showHistogram ? '2fr 1fr' : '1fr', gap: '0.5rem', flex: 1 }}>
           <div style={{ background: '#fafafa', borderRadius: '6px', padding: '0.35rem' }}>
@@ -4347,7 +4371,8 @@ const renderNumericFilterMenu = (
           title: metadata?.display_name || title,
           tooltip: tooltipText,
           countIndicator,
-          actions: actionButtons
+          actions: actionButtons,
+          isListColumn: metadata?.is_list_column || false
         })}
         <Plot
           data={[{

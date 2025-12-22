@@ -25,6 +25,7 @@ export const createClickHouseClient = (settings: ClickHouseConnectionSettings): 
   const config: ClickHouseClientConfigOptions = {
     url,
     database: settings.database || 'default',
+    request_timeout: 5000, // 5 second timeout for remote connections
   }
 
   if (settings.username) {

@@ -492,7 +492,8 @@ class AggregationService {
     allTablesMetadata?: TableMetadata[],
     tableAliasResolver?: (tableName?: string) => string | undefined,
     metricContext?: MetricContext,
-    currentTableClickhouseName?: string
+    currentTableClickhouseName?: string,
+    listColumns?: Set<string>
   ): string {
     if (!filters) {
       return ''
@@ -553,11 +554,11 @@ class AggregationService {
     let localCondition = ''
     if (filteredLocalFilters.length > 0) {
       const filterTree: Filter = filteredLocalFilters.length === 1 ? filteredLocalFilters[0] : { and: filteredLocalFilters }
-      localCondition = this.buildFilterCondition(filterTree)
+      localCondition = this.buildFilterCondition(filterTree, undefined, listColumns)
     }
 
     const aliasConditions = aliasFilters
-      .map(({ filter, alias }) => this.buildFilterCondition(filter, alias))
+      .map(({ filter, alias }) => this.buildFilterCondition(filter, alias, listColumns))
       .filter(condition => condition !== '')
 
     // Combine local and cross-table conditions
@@ -573,11 +574,11 @@ class AggregationService {
   /**
    * Recursively build filter condition from filter tree
    */
-  private buildFilterCondition(filter: Filter, alias?: string | null): string {
+  private buildFilterCondition(filter: Filter, alias?: string | null, listColumns?: Set<string>): string {
     // Handle logical operators
     if (filter.and && Array.isArray(filter.and)) {
       const conditions = filter.and
-        .map(f => this.buildFilterCondition(f, alias))
+        .map(f => this.buildFilterCondition(f, alias, listColumns))
         .filter(c => c !== '')
       if (conditions.length === 0) return ''
       if (conditions.length === 1) return conditions[0]
@@ -586,7 +587,7 @@ class AggregationService {
 
     if (filter.or && Array.isArray(filter.or)) {
       const conditions = filter.or
-        .map(f => this.buildFilterCondition(f, alias))
+        .map(f => this.buildFilterCondition(f, alias, listColumns))
         .filter(c => c !== '')
       if (conditions.length === 0) return ''
       if (conditions.length === 1) return conditions[0]
@@ -594,7 +595,7 @@ class AggregationService {
     }
 
     if (filter.not) {
-      const condition = this.buildFilterCondition(filter.not, alias)
+      const condition = this.buildFilterCondition(filter.not, alias, listColumns)
       if (!condition) return ''
       return `NOT (${condition})`
     }
@@ -609,81 +610,126 @@ class AggregationService {
         ? filter.column
         : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
 
+    const isListColumn = listColumns?.has(filter.column) || false
+
     switch (filter.operator) {
       case 'eq':
-        // Handle empty string case
-        if (filter.value === '(Empty)' || filter.value === '') {
-          return `(${col} = '' OR isNull(${col}))`
-        }
-        if (filter.value === '(N/A)') {
-          return `${col} = 'N/A'`
-        }
-        if (filter.value === null) {
-          return `isNull(${col})`
-        }
-        if (typeof filter.value === 'number') {
-          if (!Number.isFinite(filter.value)) {
-            throw new Error('Invalid value provided for eq filter')
+        if (isListColumn) {
+          // For list columns, use has() to check if array contains the value
+          // Arrays cannot be null in ClickHouse, only empty
+          if (filter.value === '(Empty)' || filter.value === '' || filter.value === null) {
+            return `empty(${col})`
           }
-          return `${col} = ${filter.value}`
+          if (filter.value === '(N/A)') {
+            return `has(${col}, 'N/A')`
+          }
+          if (typeof filter.value === 'string') {
+            return `has(${col}, '${filter.value.replace(/'/g, "''")}')`
+          }
+          throw new Error('Invalid value provided for list column eq filter')
+        } else {
+          // Original non-list logic
+          // Handle empty string case
+          if (filter.value === '(Empty)' || filter.value === '') {
+            return `(${col} = '' OR isNull(${col}))`
+          }
+          if (filter.value === '(N/A)') {
+            return `${col} = 'N/A'`
+          }
+          if (filter.value === null) {
+            return `isNull(${col})`
+          }
+          if (typeof filter.value === 'number') {
+            if (!Number.isFinite(filter.value)) {
+              throw new Error('Invalid value provided for eq filter')
+            }
+            return `${col} = ${filter.value}`
+          }
+          if (typeof filter.value === 'string') {
+            return `${col} = '${filter.value.replace(/'/g, "''")}'`
+          }
+          throw new Error('Invalid value provided for eq filter')
         }
-        if (typeof filter.value === 'string') {
-          return `${col} = '${filter.value.replace(/'/g, "''")}'`
-        }
-        throw new Error('Invalid value provided for eq filter')
 
       case 'in':
-        const values = Array.isArray(filter.value) ? filter.value : [filter.value]
-        let includesEmpty = false
-        let includesNull = false
-        const inValues = values
-          .map(v => {
-            if (v === '(Empty)' || v === '') {
-              includesEmpty = true
-              return null
+        if (isListColumn) {
+          // For list columns, use has() for each value with OR logic
+          // Arrays cannot be null in ClickHouse, only empty
+          const values = Array.isArray(filter.value) ? filter.value : [filter.value]
+          const conditions = values.map(v => {
+            if (v === '(Empty)' || v === '' || v === null) {
+              return `empty(${col})`
             }
             if (v === '(N/A)') {
-              return `'N/A'`
-            }
-            if (v === null) {
-              includesNull = true
-              return null
-            }
-            if (typeof v === 'number') {
-              if (!Number.isFinite(v)) {
-                throw new Error('Invalid numeric value provided for in filter')
-              }
-              return `${v}`
+              return `has(${col}, 'N/A')`
             }
             if (typeof v === 'string') {
-              return `'${v.replace(/'/g, "''")}'`
+              return `has(${col}, '${v.replace(/'/g, "''")}')`
             }
-            throw new Error('Invalid value provided for in filter')
+            throw new Error('Invalid value provided for list column in filter')
           })
-          .filter((item): item is string => item !== null)
-          .join(', ')
 
-        const conditions: string[] = []
-        if (inValues.length > 0) {
-          conditions.push(`${col} IN (${inValues})`)
-        }
-        if (includesEmpty) {
-          conditions.push(`${col} = ''`)
-          conditions.push(`isNull(${col})`)
-        } else if (includesNull) {
-          conditions.push(`isNull(${col})`)
-        }
+          if (conditions.length === 0) {
+            return '0'
+          }
+          if (conditions.length === 1) {
+            return conditions[0]
+          }
+          return `(${conditions.join(' OR ')})`
+        } else {
+          // Original non-list logic
+          const values = Array.isArray(filter.value) ? filter.value : [filter.value]
+          let includesEmpty = false
+          let includesNull = false
+          const inValues = values
+            .map(v => {
+              if (v === '(Empty)' || v === '') {
+                includesEmpty = true
+                return null
+              }
+              if (v === '(N/A)') {
+                return `'N/A'`
+              }
+              if (v === null) {
+                includesNull = true
+                return null
+              }
+              if (typeof v === 'number') {
+                if (!Number.isFinite(v)) {
+                  throw new Error('Invalid numeric value provided for in filter')
+                }
+                return `${v}`
+              }
+              if (typeof v === 'string') {
+                return `'${v.replace(/'/g, "''")}'`
+              }
+              throw new Error('Invalid value provided for in filter')
+            })
+            .filter((item): item is string => item !== null)
+            .join(', ')
 
-        if (conditions.length === 0) {
-          // No valid values provided; return a condition that always fails
-          return '0'
-        }
+          const conditions: string[] = []
+          if (inValues.length > 0) {
+            conditions.push(`${col} IN (${inValues})`)
+          }
+          if (includesEmpty) {
+            conditions.push(`${col} = ''`)
+            conditions.push(`isNull(${col})`)
+          } else if (includesNull) {
+            conditions.push(`isNull(${col})`)
+          }
 
-        if (conditions.length === 1) {
-          return conditions[0]
-        }
+          if (conditions.length === 0) {
+            // No valid values provided; return a condition that always fails
+            return '0'
+          }
 
-        return `(${conditions.join(' OR ')})`
+          if (conditions.length === 1) {
+            return conditions[0]
+          }
+
+          return `(${conditions.join(' OR ')})`
+        }
 
       case 'gt':
         return `${col} > ${this.ensureNumeric(filter.value, 'gt')}`
@@ -730,7 +776,8 @@ class AggregationService {
     filters: Filter[] | Filter = [],
     currentTableName?: string,
     allTablesMetadata?: TableMetadata[],
-    countBy?: CountByConfig
+    countBy?: CountByConfig,
+    listColumns?: Set<string>
   ): Promise<ColumnAggregation> {
     // Get the ClickHouse table name
     const tableResult = await clickhouseClient.query({
@@ -751,6 +798,26 @@ class AggregationService {
     }
 
     const clickhouseTableName = tables[0].clickhouse_table_name
+
+    // Fetch all list columns for this table (for filtering support) if not provided
+    let resolvedListColumns = listColumns
+    if (!resolvedListColumns) {
+      const listColumnsResult = await clickhouseClient.query({
+        query: `
+          SELECT column_name, is_list_column
+          FROM biai.dataset_columns
+          WHERE dataset_id = {datasetId:String}
+            AND table_id = {tableId:String}
+            AND is_list_column = true
+        `,
+        query_params: { datasetId, tableId },
+        format: 'JSONEachRow'
+      })
+
+      const listColumnRecords = await listColumnsResult.json<{ column_name: string; is_list_column: boolean }>()
+      resolvedListColumns = new Set(listColumnRecords.map(r => r.column_name))
+    }
+    const isListColumn = resolvedListColumns.has(columnName)
     const qualifiedTableName = this.qualifyTableName(clickhouseTableName)
     const totalRows = tables[0].row_count
     let effectiveTableName = currentTableName || tables[0].table_name
@@ -774,7 +841,7 @@ class AggregationService {
           return metricContext.aliasByTable?.[tableName]
         }
       : undefined
-    const whereClause = this.buildWhereClause(filters, validColumns, effectiveTableName, tableMetadata, aliasResolver, metricContext, clickhouseTableName)
+    const whereClause = this.buildWhereClause(filters, validColumns, effectiveTableName, tableMetadata, aliasResolver, metricContext, clickhouseTableName, listColumns)
 
     const fromClause = this.buildFromClause(qualifiedTableName, metricContext)
     const metricAggregation = this.getMetricAggregationExpression(metricContext)
@@ -847,7 +914,8 @@ class AggregationService {
         filteredTotalRows,
         categoryLimit,
         whereClause,
-        metricContext
+        metricContext,
+        isListColumn
       )
     } else if (effectiveDisplayType === 'numeric') {
       aggregation.numeric_stats = await this.getNumericStats(
@@ -878,32 +946,64 @@ class AggregationService {
     totalRows: number,
     limit: number = 50,
     whereClause: string = '',
-    metricContext: MetricContext
+    metricContext: MetricContext,
+    isListColumn: boolean = false
   ): Promise<CategoryCount[]> {
     const metricAggregation = this.getMetricAggregationExpression(metricContext)
     const columnExpr = this.columnRef(columnName)
     const fromClause = this.buildFromClause(qualifiedTableName, metricContext)
-    const query = `
-      SELECT
-        multiIf(
-          isNull(${columnExpr}) OR lengthUTF8(trimBoth(toString(${columnExpr}))) = 0, '',
-          lowerUTF8(trimBoth(toString(${columnExpr}))) = 'n/a', 'N/A',
-          trimBoth(toString(${columnExpr}))
-        ) AS value,
-        multiIf(
-          isNull(${columnExpr}) OR lengthUTF8(trimBoth(toString(${columnExpr}))) = 0, '(Empty)',
-          lowerUTF8(trimBoth(toString(${columnExpr}))) = 'n/a', '(N/A)',
-          trimBoth(toString(${columnExpr}))
-        ) AS display_value,
-        ${metricAggregation} AS count,
-        if(${totalRows} = 0, 0, ${metricAggregation} * 100.0 / ${totalRows}) AS percentage
-      FROM ${fromClause}
-      WHERE 1=1
-        ${whereClause}
-      GROUP BY value, display_value
-      ORDER BY count DESC
-      LIMIT ${limit}
-    `
+
+    let query: string
+
+    if (isListColumn) {
+      // Use ARRAY JOIN to expand list items
+      // Each row with a list is duplicated per item
+      query = `
+        SELECT
+          multiIf(
+            isNull(item) OR lengthUTF8(trimBoth(toString(item))) = 0, '',
+            lowerUTF8(trimBoth(toString(item))) = 'n/a', 'N/A',
+            trimBoth(toString(item))
+          ) AS value,
+          multiIf(
+            isNull(item) OR lengthUTF8(trimBoth(toString(item))) = 0, '(Empty)',
+            lowerUTF8(trimBoth(toString(item))) = 'n/a', '(N/A)',
+            trimBoth(toString(item))
+          ) AS display_value,
+          ${metricAggregation} AS count,
+          if(${totalRows} = 0, 0, ${metricAggregation} * 100.0 / ${totalRows}) AS percentage
+        FROM ${fromClause}
+        ARRAY JOIN ${columnExpr} AS item
+        WHERE 1=1
+          ${whereClause}
+        GROUP BY value, display_value
+        ORDER BY count DESC
+        LIMIT ${limit}
+      `
+    } else {
+      // Original query for non-list columns
+      query = `
+        SELECT
+          multiIf(
+            isNull(${columnExpr}) OR lengthUTF8(trimBoth(toString(${columnExpr}))) = 0, '',
+            lowerUTF8(trimBoth(toString(${columnExpr}))) = 'n/a', 'N/A',
+            trimBoth(toString(${columnExpr}))
+          ) AS value,
+          multiIf(
+            isNull(${columnExpr}) OR lengthUTF8(trimBoth(toString(${columnExpr}))) = 0, '(Empty)',
+            lowerUTF8(trimBoth(toString(${columnExpr}))) = 'n/a', '(N/A)',
+            trimBoth(toString(${columnExpr}))
+          ) AS display_value,
+          ${metricAggregation} AS count,
+          if(${totalRows} = 0, 0, ${metricAggregation} * 100.0 / ${totalRows}) AS percentage
+        FROM ${fromClause}
+        WHERE 1=1
+          ${whereClause}
+        GROUP BY value, display_value
+        ORDER BY count DESC
+        LIMIT ${limit}
+      `
+    }
 
     const result = await clickhouseClient.query({
       query,
@@ -1253,7 +1353,7 @@ class AggregationService {
           return metricContext.aliasByTable?.[tableName]
         }
       : undefined
-    const whereClause = this.buildWhereClause(filters, validColumns, effectiveTableName, tableMetadata, aliasResolver, metricContext, clickhouseTableName)
+    const whereClause = this.buildWhereClause(filters, validColumns, effectiveTableName, tableMetadata, aliasResolver, metricContext, clickhouseTableName, listColumns)
     const fromClause = this.buildFromClause(qualifiedTableName, metricContext)
 
     const timeExpr = `toFloat64(${this.columnRef(timeColumn)})`
@@ -1370,6 +1470,21 @@ class AggregationService {
 
     const columns = await columnsResult.json<{ column_name: string; display_type: string; is_hidden: boolean }>()
 
+    // Fetch list columns once for the entire table (performance optimization)
+    const listColumnsResult = await clickhouseClient.query({
+      query: `
+        SELECT column_name, is_list_column
+        FROM biai.dataset_columns
+        WHERE dataset_id = {datasetId:String}
+          AND table_id = {tableId:String}
+          AND is_list_column = true
+      `,
+      query_params: { datasetId, tableId },
+      format: 'JSONEachRow'
+    })
+    const listColumnRecords = await listColumnsResult.json<{ column_name: string; is_list_column: boolean }>()
+    const listColumns = new Set(listColumnRecords.map(r => r.column_name))
+
     // Get aggregations for each column in parallel
     const aggregations = await Promise.all(
       columns.map(col =>
@@ -1381,7 +1496,8 @@ class AggregationService {
           filters,
           currentTableName,
           allTablesMetadata,
-          countBy
+          countBy,
+          listColumns
         )
       )
     )

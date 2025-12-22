@@ -304,7 +304,9 @@ export class DatasetService {
         max_value: analysis.max_value,
         suggested_chart: analysis.suggested_chart,
         display_priority: finalPriority,
-        is_hidden: analysis.is_hidden
+        is_hidden: analysis.is_hidden,
+        is_list_column: col.isListColumn || false,
+        list_syntax: col.listSyntax || ''
       })
     }
 
@@ -352,9 +354,18 @@ export class DatasetService {
 
   private async createDynamicTable(databaseName: string, tableName: string, columns: ColumnMetadata[], primaryKey?: string): Promise<void> {
     const columnDefs = columns.map(col => {
-      // Make all columns nullable except the primary key
-      const shouldBeNullable = col.name !== primaryKey
-      const columnType = shouldBeNullable ? 'Nullable(' + col.type + ')' : col.type
+      let columnType: string
+
+      // Handle list/array columns
+      if (col.isListColumn || col.type === 'Array(String)') {
+        // Array types cannot be nullable in ClickHouse
+        columnType = 'Array(String)'
+      } else {
+        // Regular columns - make nullable except for primary key
+        const shouldBeNullable = col.name !== primaryKey
+        columnType = shouldBeNullable ? `Nullable(${col.type})` : col.type
+      }
+
       return `${col.name} ${columnType}`
     }).join(',\n    ')
 
@@ -381,11 +392,25 @@ export class DatasetService {
       columns.forEach((col, index) => {
         let value = row[index]
 
+        // Handle list/array columns first (arrays cannot be null in ClickHouse)
+        if (col.isListColumn || col.type === 'Array(String)') {
+          // Empty values become empty arrays, not null
+          if (value === '' || value === null || value === undefined || value === 'NA') {
+            obj[col.name] = []
+            return
+          }
+          // Value should already be parsed as array from parseCSVFile
+          obj[col.name] = Array.isArray(value) ? value : []
+          return
+        }
+
+        // Handle empty values for non-array columns
         if (value === '' || value === null || value === undefined || value === 'NA') {
           obj[col.name] = null
           return
         }
 
+        // Handle other column types
         if (col.type === 'Int32') {
           const parsed = parseInt(value, 10)
           obj[col.name] = isNaN(parsed) ? null : parsed
@@ -418,31 +443,33 @@ export class DatasetService {
 
     const datasets = await result.json<Dataset>()
 
-    // Load tables for all datasets
-    for (const dataset of datasets) {
-      const connectionSettings = this.getDatasetConnectionSettings(dataset)
+    // Load tables for all datasets in parallel (performance optimization)
+    await Promise.all(
+      datasets.map(async (dataset) => {
+        const connectionSettings = this.getDatasetConnectionSettings(dataset)
 
-      if (dataset.database_type === 'connected' && dataset.database_name) {
-        if (connectionSettings?.host) {
-          try {
-            dataset.tables = await this.getDatabaseTables(
-              dataset.database_name,
-              connectionSettings,
-              dataset.dataset_id
-            )
-          } catch (error) {
-            console.warn(`Remote table sync failed for dataset ${dataset.dataset_id}:`, error)
+        if (dataset.database_type === 'connected' && dataset.database_name) {
+          if (connectionSettings?.host) {
+            try {
+              dataset.tables = await this.getDatabaseTables(
+                dataset.database_name,
+                connectionSettings,
+                dataset.dataset_id
+              )
+            } catch (error) {
+              console.warn(`Remote table sync failed for dataset ${dataset.dataset_id}:`, error)
+              dataset.tables = await this.getDatasetTables(dataset.dataset_id)
+              this.updateCustomMetadata(dataset, { remote_table_sync_failed: true })
+            }
+          } else {
             dataset.tables = await this.getDatasetTables(dataset.dataset_id)
-            this.updateCustomMetadata(dataset, { remote_table_sync_failed: true })
+            this.updateCustomMetadata(dataset, { remote_connection_missing: true })
           }
         } else {
           dataset.tables = await this.getDatasetTables(dataset.dataset_id)
-          this.updateCustomMetadata(dataset, { remote_connection_missing: true })
         }
-      } else {
-        dataset.tables = await this.getDatasetTables(dataset.dataset_id)
-      }
-    }
+      })
+    )
 
     return datasets
   }

@@ -1,4 +1,5 @@
 import clickhouseClient from '../config/clickhouse.js'
+import { looksLikeList, parseListValue, hasNestedLists } from '../utils/listParser.js'
 
 const qualifyTableName = (tableName: string): string =>
   tableName.includes('.') ? tableName : `biai.${tableName}`
@@ -60,14 +61,21 @@ async function getColumnStats(
   columnName: string,
   columnType: string
 ): Promise<ColumnStats> {
-  // Handle nullable types
+  // Handle different column types
   const isNumericType = columnType.includes('Int') || columnType.includes('Float') || columnType.includes('Decimal')
+  const isArrayType = columnType.startsWith('Array(')
   const qualifiedTableName = qualifyTableName(tableName)
 
   // Get unique count and null count
-  const nullCondition = isNumericType
-    ? `isNull(${columnName})`
-    : `isNull(${columnName}) OR ${columnName} = ''`
+  // Arrays cannot be null in ClickHouse, only empty
+  let nullCondition: string
+  if (isArrayType) {
+    nullCondition = `empty(${columnName})`
+  } else if (isNumericType) {
+    nullCondition = `isNull(${columnName})`
+  } else {
+    nullCondition = `isNull(${columnName}) OR ${columnName} = ''`
+  }
 
   const countQuery = `
     SELECT
@@ -92,9 +100,14 @@ async function getColumnStats(
       : { unique_count: 0, null_count: 0, total_count: 0 }
 
   // Get sample values (up to 100)
-  const whereCondition = isNumericType
-    ? `${columnName} IS NOT NULL`
-    : `${columnName} IS NOT NULL AND ${columnName} != ''`
+  let whereCondition: string
+  if (isArrayType) {
+    whereCondition = `NOT empty(${columnName})`
+  } else if (isNumericType) {
+    whereCondition = `${columnName} IS NOT NULL`
+  } else {
+    whereCondition = `${columnName} IS NOT NULL AND ${columnName} != ''`
+  }
 
   const sampleQuery = `
     SELECT DISTINCT ${columnName}
@@ -336,4 +349,139 @@ function shouldHideColumn(
   }
 
   return false
+}
+
+/**
+ * Result of list detection for a column
+ */
+export interface ListDetectionResult {
+  columnName: string
+  columnIndex: number
+  confidence: 'high' | 'medium' | 'low'
+  sampleCount: number
+  listSyntax: 'python' | 'json' | 'mixed'
+  avgItemCount: number
+  uniqueItemCount: number
+  hasNestedLists: boolean
+}
+
+/**
+ * Detect columns that likely contain list values.
+ * Analyzes sample values to identify list patterns and calculate confidence.
+ *
+ * @param columns - Array of column metadata
+ * @param rows - Array of data rows
+ * @param sampleSize - Number of rows to analyze (default: 100)
+ * @returns Array of list detection results with high/medium/low confidence
+ */
+export function detectListColumns(
+  columns: { name: string; index: number }[],
+  rows: any[][],
+  sampleSize: number = 100
+): ListDetectionResult[] {
+  const results: ListDetectionResult[] = []
+  const samplesToAnalyze = Math.min(sampleSize, rows.length)
+
+  if (samplesToAnalyze === 0) {
+    return results
+  }
+
+  for (const column of columns) {
+    const columnIndex = column.index
+
+    // Get sample values for this column
+    const sampleValues = rows.slice(0, samplesToAnalyze).map(row => row[columnIndex])
+
+    // Filter out null/empty values
+    const nonEmptyValues = sampleValues.filter(
+      v => v !== null && v !== undefined && String(v).trim() !== ''
+    )
+
+    if (nonEmptyValues.length === 0) {
+      continue
+    }
+
+    // Count how many values look like lists
+    let pythonCount = 0
+    let jsonCount = 0
+    let listLikeCount = 0
+    let hasNested = false
+    const allParsedItems: string[] = []
+
+    for (const value of nonEmptyValues) {
+      const strValue = String(value)
+
+      if (looksLikeList(strValue)) {
+        listLikeCount++
+
+        // Try to parse to determine syntax and collect items
+        const result = parseListValue(strValue, 'auto')
+
+        if (result.success) {
+          // Detect syntax by checking quotes
+          const trimmed = strValue.trim()
+          if (trimmed.includes('"')) {
+            jsonCount++
+          } else {
+            pythonCount++
+          }
+
+          // Collect items for uniqueness analysis
+          allParsedItems.push(...result.items)
+
+          // Check for nested lists
+          if (hasNestedLists(strValue)) {
+            hasNested = true
+          }
+        }
+      }
+    }
+
+    // Calculate confidence based on percentage of list-like values
+    const listPercentage = (listLikeCount / nonEmptyValues.length) * 100
+
+    let confidence: 'high' | 'medium' | 'low'
+    if (listPercentage >= 90) {
+      confidence = 'high'
+    } else if (listPercentage >= 70) {
+      confidence = 'medium'
+    } else if (listPercentage >= 50) {
+      confidence = 'low'
+    } else {
+      // Not enough list-like values, skip
+      continue
+    }
+
+    // Determine syntax
+    let listSyntax: 'python' | 'json' | 'mixed'
+    if (jsonCount > pythonCount * 2) {
+      listSyntax = 'json'
+    } else if (pythonCount > jsonCount * 2) {
+      listSyntax = 'python'
+    } else if (jsonCount > 0 && pythonCount > 0) {
+      listSyntax = 'mixed'
+    } else {
+      // Default to python if unclear
+      listSyntax = 'python'
+    }
+
+    // Calculate average items per list
+    const avgItemCount = listLikeCount > 0 ? allParsedItems.length / listLikeCount : 0
+
+    // Count unique items
+    const uniqueItemCount = new Set(allParsedItems).size
+
+    results.push({
+      columnName: column.name,
+      columnIndex: column.index,
+      confidence,
+      sampleCount: nonEmptyValues.length,
+      listSyntax,
+      avgItemCount: Math.round(avgItemCount * 10) / 10, // Round to 1 decimal
+      uniqueItemCount,
+      hasNestedLists: hasNested
+    })
+  }
+
+  return results
 }

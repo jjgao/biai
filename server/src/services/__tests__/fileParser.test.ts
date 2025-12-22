@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
-import { parseCSVFile, ColumnMetadataConfig } from '../fileParser'
+import { parseCSVFile, ColumnMetadataConfig, detectDelimiter } from '../fileParser'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
@@ -238,6 +238,171 @@ describe('File Parser', () => {
       expect(result.columns[1].type).toBe('String')
       expect(result.columns[2].type).toBe('Int32')
       expect(result.rowCount).toBe(2)
+    })
+  })
+
+  describe('Delimiter Detection', () => {
+    test('should detect comma delimiter', async () => {
+      const testFile = path.join(tempDir, 'test.csv')
+      const content = [
+        'ID,NAME,AGE',
+        '1,John,45',
+        '2,Jane,32'
+      ].join('\n')
+
+      await fs.writeFile(testFile, content)
+
+      const delimiter = await detectDelimiter(testFile)
+      expect(delimiter).toBe(',')
+    })
+
+    test('should detect tab delimiter', async () => {
+      const testFile = path.join(tempDir, 'test.tsv')
+      const content = [
+        'ID\tNAME\tAGE',
+        '1\tJohn\t45',
+        '2\tJane\t32'
+      ].join('\n')
+
+      await fs.writeFile(testFile, content)
+
+      const delimiter = await detectDelimiter(testFile)
+      expect(delimiter).toBe('\t')
+    })
+
+    test('should detect semicolon delimiter', async () => {
+      const testFile = path.join(tempDir, 'test.csv')
+      const content = [
+        'ID;NAME;AGE',
+        '1;John;45',
+        '2;Jane;32'
+      ].join('\n')
+
+      await fs.writeFile(testFile, content)
+
+      const delimiter = await detectDelimiter(testFile)
+      expect(delimiter).toBe(';')
+    })
+
+    test('should detect pipe delimiter', async () => {
+      const testFile = path.join(tempDir, 'test.csv')
+      const content = [
+        'ID|NAME|AGE',
+        '1|John|45',
+        '2|Jane|32'
+      ].join('\n')
+
+      await fs.writeFile(testFile, content)
+
+      const delimiter = await detectDelimiter(testFile)
+      expect(delimiter).toBe('|')
+    })
+
+    test('should default to tab for ambiguous files', async () => {
+      const testFile = path.join(tempDir, 'test.txt')
+      const content = 'Just a single line with no clear delimiter'
+
+      await fs.writeFile(testFile, content)
+
+      const delimiter = await detectDelimiter(testFile)
+      expect(delimiter).toBe('\t')
+    })
+  })
+
+  describe('List Column Parsing', () => {
+    test('should parse Python-style list columns', async () => {
+      const testFile = path.join(tempDir, 'test.csv')
+      const content = [
+        'ID,TAGS',
+        '1,"[\'tag1\',\'tag2\',\'tag3\']"',
+        '2,"[\'tag4\',\'tag5\']"'
+      ].join('\n')
+
+      await fs.writeFile(testFile, content)
+
+      const listColumns = new Map([['tags', 'python' as const]])
+      const result = await parseCSVFile(testFile, 0, ',', undefined, false, listColumns)
+
+      expect(result.columns[1].type).toBe('Array(String)')
+      expect(result.columns[1].isListColumn).toBe(true)
+      expect(result.columns[1].listSyntax).toBe('python')
+      expect(Array.isArray(result.rows[0][1])).toBe(true)
+      expect(result.rows[0][1]).toEqual(['tag1', 'tag2', 'tag3'])
+      expect(result.rows[1][1]).toEqual(['tag4', 'tag5'])
+    })
+
+    test('should parse JSON-style list columns', async () => {
+      const testFile = path.join(tempDir, 'test.csv')
+      const content = `ID,CATEGORIES
+1,"[""cat1"",""cat2""]"
+2,"[""cat3""]"`
+
+      await fs.writeFile(testFile, content)
+
+      const listColumns = new Map([['categories', 'json' as const]])
+      const result = await parseCSVFile(testFile, 0, ',', undefined, false, listColumns)
+
+      expect(result.columns[1].type).toBe('Array(String)')
+      expect(result.columns[1].isListColumn).toBe(true)
+      expect(result.columns[1].listSyntax).toBe('json')
+      expect(Array.isArray(result.rows[0][1])).toBe(true)
+      expect(result.rows[0][1]).toEqual(['cat1', 'cat2'])
+      expect(result.rows[1][1]).toEqual(['cat3'])
+    })
+
+    test('should handle empty list values', async () => {
+      const testFile = path.join(tempDir, 'test.csv')
+      const content = [
+        'ID,TAGS',
+        '1,"[\'tag1\']"',
+        '2,"[]"',
+        '3,'
+      ].join('\n')
+
+      await fs.writeFile(testFile, content)
+
+      const listColumns = new Map([['tags', 'python' as const]])
+      const result = await parseCSVFile(testFile, 0, ',', undefined, false, listColumns)
+
+      expect(result.rows[0][1]).toEqual(['tag1'])
+      expect(result.rows[1][1]).toEqual([])
+      expect(result.rows[2][1]).toEqual([])
+    })
+
+    test('should handle list with spaces and special characters', async () => {
+      const testFile = path.join(tempDir, 'test.csv')
+      const content = [
+        'ID,ANALYSIS_TYPE',
+        '1,"[\'Gene expression analysis\',\'Copy number analysis\',\'Survival analysis\']"'
+      ].join('\n')
+
+      await fs.writeFile(testFile, content)
+
+      const listColumns = new Map([['analysis_type', 'python' as const]])
+      const result = await parseCSVFile(testFile, 0, ',', undefined, false, listColumns)
+
+      expect(result.rows[0][1]).toEqual([
+        'Gene expression analysis',
+        'Copy number analysis',
+        'Survival analysis'
+      ])
+    })
+
+    test('should not parse list columns when not specified', async () => {
+      const testFile = path.join(tempDir, 'test.csv')
+      const content = [
+        'ID,TAGS',
+        "1,['tag1','tag2']",
+        "2,['tag3']"
+      ].join('\n')
+
+      await fs.writeFile(testFile, content)
+
+      const result = await parseCSVFile(testFile, 0, ',')
+
+      expect(result.columns[1].type).toBe('String')
+      expect(result.columns[1].isListColumn).toBe(false)
+      expect(typeof result.rows[0][1]).toBe('string')
     })
   })
 })

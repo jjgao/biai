@@ -1,6 +1,6 @@
 import express from 'express'
 import multer from 'multer'
-import { parseCSVFile, detectSkipRows } from '../services/fileParser.js'
+import { parseCSVFile, detectSkipRows, detectDelimiter } from '../services/fileParser.js'
 import datasetService from '../services/datasetService.js'
 import aggregationService from '../services/aggregationService.js'
 import { parseCountByQuery } from '../utils/countBy.js'
@@ -8,6 +8,7 @@ import dashboardService from '../services/dashboardService.js'
 import { unlink } from 'fs/promises'
 import { fetchFileFromUrl } from '../utils/urlFetcher.js'
 import { detectForeignKeys } from '../services/foreignKeyDetector.js'
+import { detectListColumns } from '../services/columnAnalyzer.js'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
 
@@ -168,12 +169,25 @@ router.post('/:id/tables/preview', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Either file upload or fileUrl is required' })
     }
 
+    // Auto-detect delimiter if not explicitly provided
+    let finalDelimiter = delimiter
+    let detectedDelimiter: string | undefined
+
+    if (!req.body.delimiter || delimiter === '\t') {
+      // Only auto-detect if delimiter wasn't explicitly set by user
+      const detected = await detectDelimiter(filePath)
+      if (detected !== '\t') {
+        detectedDelimiter = detected
+        finalDelimiter = detected
+      }
+    }
+
     // Auto-detect skipRows if set to 0 - check if first rows start with #
     let finalSkipRows = parseInt(skipRows, 10)
     let detectedSkipRows: number | undefined
 
     if (finalSkipRows === 0) {
-      const detectedRows = await detectSkipRows(filePath, delimiter)
+      const detectedRows = await detectSkipRows(filePath, finalDelimiter)
       if (detectedRows > 0) {
         detectedSkipRows = detectedRows
         finalSkipRows = detectedRows
@@ -184,7 +198,7 @@ router.post('/:id/tables/preview', upload.single('file'), async (req, res) => {
     const parsedData = await parseCSVFile(
       filePath,
       finalSkipRows,
-      delimiter,
+      finalDelimiter,
       undefined,
       true // previewOnly mode
     )
@@ -198,6 +212,13 @@ router.post('/:id/tables/preview', upload.single('file'), async (req, res) => {
       parsedData,
       existingTables
     )
+
+    // Detect potential list columns
+    const listSuggestions = detectListColumns(
+      parsedData.columns,
+      parsedData.rows,
+      100
+    ).filter(r => r.confidence !== 'low') // Only suggest high/medium confidence
 
     // Clean up temporary file
     await unlink(tempFilePath)
@@ -214,7 +235,9 @@ router.post('/:id/tables/preview', upload.single('file'), async (req, res) => {
         sampleRows,
         totalRows: parsedData.rowCount,
         detectedRelationships,
-        detectedSkipRows
+        detectedSkipRows,
+        detectedDelimiter,
+        listSuggestions
       }
     })
   } catch (error: any) {
@@ -247,7 +270,8 @@ router.post('/:id/tables', upload.single('file'), async (req, res) => {
       primaryKey,
       customMetadata = '{}',
       relationships = '[]',
-      columnMetadataConfig = '{}'
+      columnMetadataConfig = '{}',
+      listColumns = '{}'
     } = req.body
 
     // Handle either file upload or URL
@@ -294,11 +318,24 @@ router.post('/:id/tables', upload.single('file'), async (req, res) => {
       // Ignore parse errors, just don't use column metadata
     }
 
+    // Parse list columns configuration
+    let parsedListColumns: Map<string, 'python' | 'json'> | undefined
+    try {
+      const listColumnsObj = JSON.parse(listColumns)
+      if (Object.keys(listColumnsObj).length > 0) {
+        parsedListColumns = new Map(Object.entries(listColumnsObj)) as Map<string, 'python' | 'json'>
+      }
+    } catch (e) {
+      // Ignore parse errors, just don't use list columns
+    }
+
     const parsedData = await parseCSVFile(
       filePath,
       parseInt(skipRows, 10),
       delimiter,
-      parsedColumnMetadataConfig
+      parsedColumnMetadataConfig,
+      false, // not preview mode
+      parsedListColumns
     )
 
     // Parse JSON fields
