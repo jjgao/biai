@@ -100,7 +100,7 @@ describe('Databases API Routes', () => {
       .query({ datasetId: 'dataset-1', filters: JSON.stringify(filters) })
 
     expect(response.status).toBe(200)
-    expect(aggregationMock).toHaveBeenCalledWith('dataset-1', 'mutations', filters)
+    expect(aggregationMock).toHaveBeenCalledWith('dataset-1', 'mutations', filters, undefined)
     expect(response.body.aggregations).toEqual([{ column_name: 'gene', display_type: 'categorical' }])
     expect(closeMock).not.toHaveBeenCalled()
   })

@@ -279,7 +279,7 @@ function DatasetExplorer() {
   const [showManageDashboardsDialog, setShowManageDashboardsDialog] = useState(false)
   const [newDashboardName, setNewDashboardName] = useState('')
   const [editingDashboardId, setEditingDashboardId] = useState<string | null>(null)
-  const [editingDashboardName, setEditingDashboardName] = useState('')
+  const [_editingDashboardName, setEditingDashboardName] = useState('')
 
   // Track if filters have been initialized from URL to prevent overwriting
   const filtersInitialized = useRef(false)
@@ -381,6 +381,7 @@ function DatasetExplorer() {
   }
 
   const saveChartOverridesToLocalStorage = (overrides: Record<string, string>) => {
+    if (!identifier) return
     try {
       persistChartOverrides(localStorage, identifier, overrides)
     } catch (error) {
@@ -389,6 +390,7 @@ function DatasetExplorer() {
   }
 
   const loadChartOverridesFromLocalStorage = (): Record<string, string> | null => {
+    if (!identifier) return null
     try {
       return loadChartOverrides(localStorage, identifier)
     } catch (error) {
@@ -515,8 +517,8 @@ function DatasetExplorer() {
     const key = `${tableName}.${columnName}`
     setViewPreferences(prev => {
       const current = prev[key]
-      const newValue = current === 'table' ? 'chart' : 'table'
-      const updated = { ...prev, [key]: newValue }
+      const newValue: 'table' | 'chart' = current === 'table' ? 'chart' : 'table'
+      const updated: Record<string, 'table' | 'chart'> = { ...prev, [key]: newValue }
       // Save to localStorage
       try {
         localStorage.setItem(`viewPrefs_${identifier}`, JSON.stringify(updated))
@@ -684,11 +686,6 @@ function DatasetExplorer() {
     }
   }
 
-  const loadMostRecent = () => {
-    // Most Recent is the current dashboardCharts state (already loaded from database)
-    setActiveDashboardId(null)
-  }
-
   const deleteDashboard = async (dashboardId: string) => {
     try {
       // Delete from database
@@ -730,12 +727,6 @@ function DatasetExplorer() {
       console.error('Failed to rename dashboard:', error)
       alert('Failed to rename dashboard. Please try again.')
     }
-  }
-
-  const getCurrentDashboardName = (): string => {
-    if (!activeDashboardId) return 'Most Recent'
-    const dashboard = savedDashboards.find(d => d.id === activeDashboardId)
-    return dashboard?.name || 'Most Recent'
   }
 
   // Load view preferences from localStorage on mount
@@ -1443,22 +1434,6 @@ function DatasetExplorer() {
     return (matched || statusColumns[0]).column_name
   }
 
-  const getCountByLabelFromTarget = (tableName: string, target: string | null): string => {
-    if (!target) {
-      const display = getTableDisplayNameByName(tableName) || tableName
-      return `Rows (${display})`
-    }
-    const option = ancestorOptions[tableName]?.find(opt => opt.targetTable === target)
-    if (option) return option.label
-    const targetDisplay = getTableDisplayNameByName(target) || target
-    return `Unique ${targetDisplay}`
-  }
-
-  const getCountByLabelForTable = (tableName: string): string => {
-    const selection = countBySelections[tableName]
-    return getCountByLabelFromTarget(tableName, selection?.targetTable ?? null)
-  }
-
   const buildAncestorOptions = (tables: Table[]): Record<string, AncestorOption[]> => {
     const tableMap = new Map(tables.map(t => [t.name, t]))
     const options: Record<string, AncestorOption[]> = {}
@@ -1644,7 +1619,7 @@ function DatasetExplorer() {
     })
   }
 
-  const getCountByLabelFromCacheKey = (tableName: string, cacheKey: string): string => {
+  const getCountByLabelFromCacheKey = (_tableName: string, cacheKey: string): string => {
     if (cacheKey.startsWith('parent:')) {
       const target = cacheKey.slice('parent:'.length)
       return getTableDisplayNameByName(target) || target
@@ -1663,12 +1638,12 @@ function DatasetExplorer() {
     }))
   ]
 
-  const getCountIndicatorColor = (tableName: string, cacheKey: string): string => {
+  const getCountIndicatorColor = (tableName: string, _cacheKey: string): string => {
     // Color bar represents the data source table
     return getTableColor(tableName)
   }
 
-  const getCountByTableColor = (tableName: string, cacheKey: string): string | null => {
+  const getCountByTableColor = (_tableName: string, cacheKey: string): string | null => {
     // Border color represents the count-by table (when different from data source)
     const target = targetFromCacheKey(cacheKey)
     return target ? getTableColor(target) : null
@@ -2085,7 +2060,7 @@ const getFilterCountKey = (filter: Filter): string => {
           }
         ]
       }
-      const orFilters = nextRanges.map(range => ({ column: columnName, operator: 'between', value: [range.start, range.end] }))
+      const orFilters = nextRanges.map(range => ({ column: columnName, operator: 'between' as const, value: [range.start, range.end] }))
       return [
         ...without,
         { column: columnName, or: orFilters, tableName, countByKey: countKey }
@@ -2110,7 +2085,6 @@ const getFilterCountKey = (filter: Filter): string => {
     if (!aggregation || !categories || categories.length === 0) return null
 
     const metricLabels = getMetricLabels(aggregation)
-    const pathLabel = formatMetricPath(aggregation)
 
     const columnHasFilter = hasColumnFilter(columnName, cacheKey)
 
@@ -3089,7 +3063,6 @@ const renderNumericFilterMenu = (
       )
     }
 
-    const metricLabels = getMetricLabels(aggregation)
     const baselineAggregation = getBaselineAggregation(tableName, field)
     const categoriesForMenu =
       metricsMatch(baselineAggregation, aggregation) && baselineAggregation?.categories?.length
@@ -3738,7 +3711,7 @@ const renderNumericFilterMenu = (
     aggregationOverride?: ColumnAggregation,
     cacheKeyOverride?: string,
     countIndicatorOverride?: React.ReactNode,
-    extraActions?: React.ReactNode
+    _extraActions?: React.ReactNode
   ) => {
     const cacheKey = cacheKeyOverride ?? getEffectiveCacheKeyForChart(tableName, field)
     const aggregation =
@@ -3788,7 +3761,6 @@ const renderNumericFilterMenu = (
 
     const actionButtons = (
       <>
-        {extraActions}
         <button
           type="button"
           onClick={event => {
@@ -3984,7 +3956,7 @@ const renderNumericFilterMenu = (
     aggregationOverride?: ColumnAggregation,
     cacheKeyOverride?: string,
     countIndicatorOverride?: React.ReactNode,
-    extraActions?: React.ReactNode,
+    _extraActions?: React.ReactNode,
     showHistogram: boolean = true
   ) => {
     const cacheKey = cacheKeyOverride ?? getEffectiveCacheKeyForChart(tableName, field)
@@ -4021,7 +3993,6 @@ const renderNumericFilterMenu = (
 
     const actionButtons = (
       <>
-        {extraActions}
         <button
           type="button"
           onClick={event => {
@@ -4240,7 +4211,6 @@ const renderNumericFilterMenu = (
 
     const actionButtons = (
       <>
-        {extraActions}
         <button
           type="button"
           onClick={event => {
@@ -5110,7 +5080,7 @@ const renderNumericFilterMenu = (
                           }}
                         />
                         <button
-                          onClick={(e) => renamePreset(preset.id, e.currentTarget.previousElementSibling?.['value'] || '')}
+                          onClick={(e) => renamePreset(preset.id, (e.currentTarget.previousElementSibling as HTMLInputElement | null)?.value || '')}
                           style={{
                             padding: '0.25rem 0.5rem',
                             background: '#4CAF50',
@@ -5764,7 +5734,6 @@ const renderNumericFilterMenu = (
                   const aggregation = getAggregation(tableName, columnName, overrideKey)
                   const tableColor = getTableColor(tableName)
                   const displayTitle = getDisplayTitle(tableName, columnName)
-                  const table = dataset.tables.find(t => t.name === tableName)
                   const indicatorNode = renderDashboardCountIndicator(chartIndex, tableName, columnName, overrideKey)
                   const columnMeta = getColumnMetadata(tableName, columnName)
                   const metaDisplayType = columnMeta?.display_type
