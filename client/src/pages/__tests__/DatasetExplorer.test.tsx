@@ -254,14 +254,30 @@ describe('DatasetExplorer', () => {
     )
   }
 
-  const activateOrdersTab = async (): Promise<HTMLSelectElement> => {
+  const activateOrdersTab = async () => {
     await waitFor(() => {
       expect(screen.getByText('Test Dataset')).toBeInTheDocument()
     })
     const ordersTab = screen.getByRole('button', { name: /Orders/i })
     fireEvent.click(ordersTab)
-    const countSelect = await screen.findByLabelText<HTMLSelectElement>(/Count by for Orders/i)
-    return countSelect
+    // Wait for the Orders table section to appear (use exact match to avoid per-chart buttons)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Change count-by for orders' })).toBeInTheDocument()
+    })
+  }
+
+  const selectCountByForOrders = async (value: string) => {
+    // Use exact match to get the table-level button, not per-chart buttons
+    const countByButton = screen.getByRole('button', { name: 'Change count-by for orders' })
+    fireEvent.click(countByButton)
+    // Wait for dropdown to open and click the option
+    const optionButton = await screen.findByRole('button', { name: new RegExp(`^${value}$`, 'i') })
+    fireEvent.click(optionButton)
+  }
+
+  const getCountByButtonForOrders = () => {
+    // Use exact match to get the table-level button, not per-chart buttons
+    return screen.getByRole('button', { name: 'Change count-by for orders' })
   }
 
   const getOrderAggregationCallCount = () =>
@@ -512,8 +528,7 @@ describe('DatasetExplorer', () => {
       // For now, verify presets are loaded
     })
 
-    // TODO: Skip until count-by UI tests are rewritten - see issue #101
-    test.skip('applying a preset restores count-by selections', async () => {
+    test('applying a preset restores count-by selections', async () => {
       const presetWithAncestor = {
         id: 'preset-countBy',
         name: 'Parent Count',
@@ -537,8 +552,11 @@ describe('DatasetExplorer', () => {
       const presetOption = await screen.findByText('Parent Count')
       fireEvent.click(presetOption)
 
-      const countSelect = await activateOrdersTab()
-      expect(countSelect.value).toBe('parent:customers')
+      await activateOrdersTab()
+      // Verify the count-by button shows Customers (the restored selection)
+      await waitFor(() => {
+        expect(getCountByButtonForOrders().title).toMatch(/Customers/i)
+      })
     })
 
     test('applying a preset with NOT filters preserves NOT wrapper', async () => {
@@ -594,66 +612,76 @@ describe('DatasetExplorer', () => {
     })
   })
 
-  // TODO: Count By controls tests need to be rewritten for new per-chart button UI
-  // The UI now uses buttons per chart instead of a table-level select dropdown
-  // See: https://github.com/jjgao/biai/issues/101
   describe('Count By controls', () => {
-    test.skip('shows multi-hop parent options and renders ancestor badges', async () => {
+    test('shows multi-hop parent options and renders ancestor badges', async () => {
       renderExplorer()
 
-      const countSelect = await activateOrdersTab()
+      await activateOrdersTab()
 
-      const optionLabels = Array.from(countSelect.querySelectorAll('option')).map(option => option.textContent)
-      expect(optionLabels).toEqual(expect.arrayContaining([
-        'Customers',
-        'Regions'
-      ]))
+      // Click the count-by button to open the dropdown
+      const countByButton = getCountByButtonForOrders()
+      fireEvent.click(countByButton)
 
-      fireEvent.change(countSelect, { target: { value: 'parent:regions' } })
-
+      // Wait for dropdown to open - find the Regions option (which is unique to the dropdown)
+      // The dropdown contains buttons for: Orders (rows), Customers (parent), Regions (grandparent)
       await waitFor(() => {
-        expect(countSelect.value).toBe('parent:regions')
+        // Regions should only appear in the dropdown, not as a tab
+        expect(screen.getByRole('button', { name: 'Regions' })).toBeInTheDocument()
       })
 
+      // Select Regions (exact match to avoid tab button)
+      const regionsOption = screen.getByRole('button', { name: 'Regions' })
+      fireEvent.click(regionsOption)
+
+      // Verify the selection was applied (button title updates to show current selection)
+      await waitFor(() => {
+        expect(getCountByButtonForOrders().title).toMatch(/Regions/i)
+      })
     })
 
-    test.skip('reuses cached aggregations when toggling count targets', async () => {
+    test('reuses cached aggregations when toggling count targets', async () => {
       renderExplorer()
 
-      const countSelect = await activateOrdersTab()
+      await activateOrdersTab()
       const initialCalls = getOrderAggregationCallCount()
 
-      fireEvent.change(countSelect, { target: { value: 'parent:customers' } })
+      // Select parent:customers
+      await selectCountByForOrders('Customers')
 
       await waitFor(() => {
-        expect(countSelect.value).toBe('parent:customers')
+        expect(getCountByButtonForOrders().title).toMatch(/Customers/i)
       })
 
       await waitFor(() => {
         expect(getOrderAggregationCallCount()).toBe(initialCalls + 1)
       })
 
-      fireEvent.change(countSelect, { target: { value: 'rows' } })
+      // Switch back to rows (default) - dropdown option uses table display name "Orders"
+      await selectCountByForOrders('Orders')
+      // But the button title shows "Rows" when in row-count mode
       await waitFor(() => {
-        expect(countSelect.value).toBe('rows')
+        expect(getCountByButtonForOrders().title).toMatch(/Rows/i)
       })
+      // Should use cached data, no new API call
       expect(getOrderAggregationCallCount()).toBe(initialCalls + 1)
 
-      fireEvent.change(countSelect, { target: { value: 'parent:customers' } })
+      // Switch back to parent:customers
+      await selectCountByForOrders('Customers')
       await waitFor(() => {
-        expect(countSelect.value).toBe('parent:customers')
+        expect(getCountByButtonForOrders().title).toMatch(/Customers/i)
       })
+      // Should still use cached data
       expect(getOrderAggregationCallCount()).toBe(initialCalls + 1)
     })
 
-    test.skip('shows pie percentage toggle for parent metrics', async () => {
+    test('shows pie percentage toggle for parent metrics', async () => {
       renderExplorer()
 
-      const countSelect = await activateOrdersTab()
-      fireEvent.change(countSelect, { target: { value: 'parent:regions' } })
+      await activateOrdersTab()
+      await selectCountByForOrders('Regions')
 
       await waitFor(() => {
-        expect(countSelect.value).toBe('parent:regions')
+        expect(getCountByButtonForOrders().title).toMatch(/Regions/i)
       })
 
       const settingsButton = screen.getByRole('button', { name: /Chart settings/i })
@@ -667,17 +695,15 @@ describe('DatasetExplorer', () => {
     })
   })
 
-  // TODO: Dashboard integration tests need to be rewritten for new per-chart button UI
-  // See: https://github.com/jjgao/biai/issues/101
   describe('Dashboard integration', () => {
-    test.skip('pins charts with the selected count-by target', async () => {
+    test('pins charts with the selected count-by target', async () => {
       renderExplorer()
 
-      const countSelect = await activateOrdersTab()
-      fireEvent.change(countSelect, { target: { value: 'parent:regions' } })
+      await activateOrdersTab()
+      await selectCountByForOrders('Regions')
 
       await waitFor(() => {
-        expect(countSelect.value).toBe('parent:regions')
+        expect(getCountByButtonForOrders().title).toMatch(/Regions/i)
       })
 
       await waitFor(() => {
@@ -690,21 +716,21 @@ describe('DatasetExplorer', () => {
       fireEvent.click(dashboardTab)
 
       await waitFor(() => {
-        const headings = screen.getAllByTitle((value, element) =>
-          element !== null && element.tagName === 'H4' && value.includes('Regions via orders.customer_id → customers.region_id')
+        const headings = screen.getAllByTitle((_value, element) =>
+          element !== null && element.tagName === 'H4' && element.getAttribute('title')?.includes('Regions via orders.customer_id → customers.region_id')
         )
         expect(headings.length).toBeGreaterThan(0)
       })
     })
 
-    test.skip('dashboard chart tooltips include ancestor path', async () => {
+    test('dashboard chart tooltips include ancestor path', async () => {
       renderExplorer()
 
-      const countSelect = await activateOrdersTab()
-      fireEvent.change(countSelect, { target: { value: 'parent:customers' } })
+      await activateOrdersTab()
+      await selectCountByForOrders('Customers')
 
       await waitFor(() => {
-        expect(countSelect.value).toBe('parent:customers')
+        expect(getCountByButtonForOrders().title).toMatch(/Customers/i)
       })
 
       const addButton = (await screen.findAllByTitle('Add to dashboard'))[0]
@@ -714,8 +740,8 @@ describe('DatasetExplorer', () => {
       fireEvent.click(dashboardTab)
 
       await waitFor(() => {
-        const headings = screen.getAllByTitle((value, element) =>
-          element !== null && element.tagName === 'H4' && value.includes('Customers via orders.customer_id')
+        const headings = screen.getAllByTitle((_value, element) =>
+          element !== null && element.tagName === 'H4' && element.getAttribute('title')?.includes('Customers via orders.customer_id')
         )
         expect(headings.length).toBeGreaterThan(0)
       })
