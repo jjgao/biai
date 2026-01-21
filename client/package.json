@@ -26,11 +26,11 @@
     "@testing-library/react": "^16.3.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^5.1.2",
     "@vitest/ui": "^3.2.4",
     "jsdom": "^27.0.1",
     "typescript": "^5.5.3",
-    "vite": "^5.4.1",
+    "vite": "^7.3.1",
     "vitest": "^3.2.4"
   },
   "description": "BIAI Frontend - React-based UI for Business Intelligence AI",

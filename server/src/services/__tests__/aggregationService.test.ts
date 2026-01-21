@@ -800,15 +800,23 @@ describe('AggregationService - countBy metrics', () => {
       .mockResolvedValue(new Set(['status']))
 
     mockQuery
+      // 1. Table info query
       .mockResolvedValueOnce({
         json: async () => [{ table_name: 'samples', clickhouse_table_name: 'biai.samples_raw', row_count: 10 }]
       } as any)
+      // 2. List columns query (when listColumns not provided)
+      .mockResolvedValueOnce({
+        json: async () => []
+      } as any)
+      // 3. Filtered count query (for parent metric)
       .mockResolvedValueOnce({
         json: async () => [{ filtered_count: 3 }]
       } as any)
+      // 4. Basic stats query
       .mockResolvedValueOnce({
         json: async () => [{ null_count: 1, unique_count: 2 }]
       } as any)
+      // 5. Categorical aggregation query
       .mockResolvedValueOnce({
         json: async () => [{ value: 'A', display_value: 'A', count: 2, percentage: 100 }]
       } as any)
@@ -831,7 +839,7 @@ describe('AggregationService - countBy metrics', () => {
     expect(result.metric_path).toEqual([
       { from_table: 'samples', via_column: 'patient_id', to_table: 'patients', referenced_column: 'patient_id' }
     ])
-    expect(mockQuery).toHaveBeenCalledTimes(4)
+    expect(mockQuery).toHaveBeenCalledTimes(5)
 
     getTableColumnsSpy.mockRestore()
   })
@@ -942,33 +950,37 @@ describe('AggregationService - countBy metrics', () => {
     ]
 
     mockQuery
-      // loadDatasetTablesMetadata - tables
+      // 1. loadDatasetTablesMetadata - tables
       .mockResolvedValueOnce({
         json: async () => datasetTables
       } as any)
-      // loadDatasetTablesMetadata - relationships
+      // 2. loadDatasetTablesMetadata - relationships
       .mockResolvedValueOnce({
         json: async () => relationships
       } as any)
-      // dataset_columns
+      // 3. dataset_columns (column metadata query in getTableAggregations)
       .mockResolvedValueOnce({
         json: async () => [
           { column_name: 'status', display_type: 'categorical', is_hidden: false }
         ]
       } as any)
-      // dataset_tables lookup in getColumnAggregation
+      // 4. list columns query in getTableAggregations
+      .mockResolvedValueOnce({
+        json: async () => []
+      } as any)
+      // 5. dataset_tables lookup in getColumnAggregation
       .mockResolvedValueOnce({
         json: async () => [{ table_name: 'mutations', clickhouse_table_name: 'biai.mutations_raw', row_count: 100 }]
       } as any)
-      // count query
+      // 6. count query (for parent metric)
       .mockResolvedValueOnce({
         json: async () => [{ filtered_count: 80 }]
       } as any)
-      // basic stats
+      // 7. basic stats
       .mockResolvedValueOnce({
         json: async () => [{ null_count: 5, unique_count: 10 }]
       } as any)
-      // categorical aggregation
+      // 8. categorical aggregation
       .mockResolvedValueOnce({
         json: async () => [{ value: 'A', display_value: 'A', count: 80, percentage: 100 }]
       } as any)
@@ -990,7 +1002,7 @@ describe('AggregationService - countBy metrics', () => {
       { from_table: 'patients', via_column: 'hospital_id', to_table: 'hospitals', referenced_column: 'hospital_id' }
     ])
     expect(aggregation.total_rows).toBe(80)
-    expect(mockQuery).toHaveBeenCalledTimes(7)
+    expect(mockQuery).toHaveBeenCalledTimes(8)
 
     getTableColumnsSpy.mockRestore()
   })
