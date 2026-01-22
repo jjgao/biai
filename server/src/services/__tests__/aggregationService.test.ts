@@ -54,7 +54,7 @@ describe('AggregationService helpers', () => {
       value: ['(Empty)', '(N/A)', 5]
     })
 
-    expect(condition).toBe("(base_table.status IN ('N/A', 5) OR base_table.status = '' OR isNull(base_table.status))")
+    expect(condition).toBe("(base_table.`status` IN ('N/A', 5) OR base_table.`status` = '' OR isNull(base_table.`status`))")
   })
 
   test('buildFilterCondition handles nulls in IN filter', () => {
@@ -64,7 +64,7 @@ describe('AggregationService helpers', () => {
       value: [null, 'value']
     })
 
-    expect(condition).toBe("(base_table.notes IN ('value') OR isNull(base_table.notes))")
+    expect(condition).toBe("(base_table.`notes` IN ('value') OR isNull(base_table.`notes`))")
   })
 
   test('buildFilterCondition handles equality with (Empty)', () => {
@@ -74,7 +74,7 @@ describe('AggregationService helpers', () => {
       value: '(Empty)'
     })
 
-    expect(condition).toBe("(base_table.age_group = '' OR isNull(base_table.age_group))")
+    expect(condition).toBe("(base_table.`age_group` = '' OR isNull(base_table.`age_group`))")
   })
 
   test('buildFilterCondition handles equality with N/A literal', () => {
@@ -84,7 +84,7 @@ describe('AggregationService helpers', () => {
       value: '(N/A)'
     })
 
-    expect(condition).toBe("base_table.age_group = 'N/A'")
+    expect(condition).toBe("base_table.`age_group` = 'N/A'")
   })
 })
 
@@ -161,7 +161,7 @@ describe('AggregationService - Cross-Table Filtering', () => {
       )
 
       expect(subquery).toBe(
-        "base_table.patient_id IN (SELECT patient_id FROM biai.patients_abc123 WHERE radiation_therapy = 'Yes')"
+        "base_table.`patient_id` IN (SELECT `patient_id` FROM biai.patients_abc123 WHERE `radiation_therapy` = 'Yes')"
       )
     })
 
@@ -180,7 +180,7 @@ describe('AggregationService - Cross-Table Filtering', () => {
       )
 
       expect(subquery).toBe(
-        "base_table.patient_id IN (SELECT patient_id FROM biai.samples_abc123 WHERE sample_type = 'Tumor')"
+        "base_table.`patient_id` IN (SELECT `patient_id` FROM biai.samples_abc123 WHERE `sample_type` = 'Tumor')"
       )
     })
 
@@ -262,7 +262,7 @@ describe('AggregationService - Cross-Table Filtering', () => {
       )
 
       expect(subquery).toBe(
-        "base_table.patient_id IN (SELECT patient_id FROM biai.patients_abc123 WHERE radiation_therapy IN ('Yes', 'No'))"
+        "base_table.`patient_id` IN (SELECT `patient_id` FROM biai.patients_abc123 WHERE `radiation_therapy` IN ('Yes', 'No'))"
       )
     })
 
@@ -281,7 +281,7 @@ describe('AggregationService - Cross-Table Filtering', () => {
       )
 
       expect(subquery).toBe(
-        'base_table.patient_id IN (SELECT patient_id FROM biai.patients_abc123 WHERE age BETWEEN 30 AND 50)'
+        'base_table.`patient_id` IN (SELECT `patient_id` FROM biai.patients_abc123 WHERE `age` BETWEEN 30 AND 50)'
       )
     })
 
@@ -300,11 +300,11 @@ describe('AggregationService - Cross-Table Filtering', () => {
       )
 
       // Should use nested IN subqueries (ClickHouse-friendly, no JOINs)
-      expect(subquery).toContain('sample_id IN')
-      expect(subquery).toContain('SELECT sample_id FROM biai.samples_abc123')
-      expect(subquery).toContain('patient_id IN')
-      expect(subquery).toContain('SELECT patient_id FROM biai.patients_abc123')
-      expect(subquery).toContain('age >= 50')
+      expect(subquery).toContain('`sample_id` IN')
+      expect(subquery).toContain('SELECT `sample_id` FROM biai.samples_abc123')
+      expect(subquery).toContain('`patient_id` IN')
+      expect(subquery).toContain('SELECT `patient_id` FROM biai.patients_abc123')
+      expect(subquery).toContain('`age` >= 50')
     })
 
     test('generates nested IN subquery for reverse transitive relationship (patients→samples→mutations)', () => {
@@ -322,11 +322,11 @@ describe('AggregationService - Cross-Table Filtering', () => {
       )
 
       // Should use nested IN subqueries (ClickHouse-friendly, no JOINs)
-      expect(subquery).toContain('patient_id IN')
-      expect(subquery).toContain('SELECT patient_id FROM biai.samples_abc123')
-      expect(subquery).toContain('sample_id IN')
-      expect(subquery).toContain('SELECT sample_id FROM biai.mutations_abc123')
-      expect(subquery).toContain("gene = 'TP53'")
+      expect(subquery).toContain('`patient_id` IN')
+      expect(subquery).toContain('SELECT `patient_id` FROM biai.samples_abc123')
+      expect(subquery).toContain('`sample_id` IN')
+      expect(subquery).toContain('SELECT `sample_id` FROM biai.mutations_abc123')
+      expect(subquery).toContain("`gene` = 'TP53'")
     })
   })
 
@@ -339,7 +339,7 @@ describe('AggregationService - Cross-Table Filtering', () => {
       (tableName?: string) => (tableName === 'patients' ? 'ancestor_patients' : undefined)
     )
 
-    expect(result).toBe("AND (ancestor_patients.radiation_therapy = 'Yes')")
+    expect(result).toBe("AND (ancestor_patients.`radiation_therapy` = 'Yes')")
   })
 
   test('buildWhereClause handles NOT filters via alias resolver', () => {
@@ -351,7 +351,7 @@ describe('AggregationService - Cross-Table Filtering', () => {
       (tableName?: string) => (tableName === 'patients' ? 'ancestor_patients' : undefined)
     )
 
-    expect(result).toBe("AND (NOT (ancestor_patients.radiation_therapy = 'Yes'))")
+    expect(result).toBe("AND (NOT (ancestor_patients.`radiation_therapy` = 'Yes'))")
   })
 
   test('buildWhereClause generates NOT IN subquery for NOT wrapped cross-table filters', () => {
@@ -363,8 +363,8 @@ describe('AggregationService - Cross-Table Filtering', () => {
     )
 
     expect(result).toContain('NOT IN')
-    expect(result).toContain('SELECT patient_id FROM')
-    expect(result).toContain("radiation_therapy = 'Yes'")
+    expect(result).toContain('SELECT `patient_id` FROM')
+    expect(result).toContain("`radiation_therapy` = 'Yes'")
   })
 
   test('buildWhereClause handles NOT with OR combination on cross-table filters', () => {
@@ -386,9 +386,9 @@ describe('AggregationService - Cross-Table Filtering', () => {
     )
 
     expect(result).toContain('NOT IN')
-    expect(result).toContain('SELECT patient_id FROM')
-    expect(result).toContain("radiation_therapy = 'Yes'")
-    expect(result).toContain('age >= 60')
+    expect(result).toContain('SELECT `patient_id` FROM')
+    expect(result).toContain("`radiation_therapy` = 'Yes'")
+    expect(result).toContain('`age` >= 60')
     expect(result).toContain(' OR ')
   })
 
@@ -402,9 +402,9 @@ describe('AggregationService - Cross-Table Filtering', () => {
 
     expect(result).toContain('NOT IN')
     // Should build nested subqueries: mutations.sample_id NOT IN (SELECT sample_id FROM samples WHERE patient_id IN (SELECT patient_id FROM patients WHERE age >= 60))
-    expect(result).toContain('SELECT sample_id FROM')
-    expect(result).toContain('SELECT patient_id FROM')
-    expect(result).toContain('age >= 60')
+    expect(result).toContain('SELECT `sample_id` FROM')
+    expect(result).toContain('SELECT `patient_id` FROM')
+    expect(result).toContain('`age` >= 60')
   })
 
   test('buildWhereClause includes NULL guard for NOT IN cross-table filters', () => {
@@ -420,7 +420,7 @@ describe('AggregationService - Cross-Table Filtering', () => {
     expect(result).toContain('NOT IN')
     expect(result).toContain('IS NULL')
     expect(result).toContain('OR')
-    expect(result).toContain("radiation_therapy = 'Yes'")
+    expect(result).toContain("`radiation_therapy` = 'Yes'")
   })
 
   describe('findRelationshipPath', () => {
@@ -517,9 +517,9 @@ describe('AggregationService - Cross-Table Filtering', () => {
         mockTablesMetadata
       )
 
-      expect(whereClause).toContain("base_table.sample_type = 'Tumor'")
+      expect(whereClause).toContain("base_table.`sample_type` = 'Tumor'")
       expect(whereClause).toContain(
-        "base_table.patient_id IN (SELECT patient_id FROM biai.patients_abc123 WHERE radiation_therapy = 'Yes')"
+        "base_table.`patient_id` IN (SELECT `patient_id` FROM biai.patients_abc123 WHERE `radiation_therapy` = 'Yes')"
       )
       expect(whereClause).toContain('AND')
     })
@@ -542,7 +542,7 @@ describe('AggregationService - Cross-Table Filtering', () => {
       )
 
       expect(whereClause).toBe(
-        "AND (base_table.patient_id IN (SELECT patient_id FROM biai.patients_abc123 WHERE radiation_therapy = 'Yes'))"
+        "AND (base_table.`patient_id` IN (SELECT `patient_id` FROM biai.patients_abc123 WHERE `radiation_therapy` = 'Yes'))"
       )
     })
 
@@ -563,7 +563,7 @@ describe('AggregationService - Cross-Table Filtering', () => {
         mockTablesMetadata
       )
 
-      expect(whereClause).toBe("AND (base_table.sample_type = 'Tumor')")
+      expect(whereClause).toBe("AND (base_table.`sample_type` = 'Tumor')")
     })
 
     test('filters out non-existent columns from local filters', () => {
@@ -590,7 +590,7 @@ describe('AggregationService - Cross-Table Filtering', () => {
       )
 
       // Should only include sample_type, not non_existent_column
-      expect(whereClause).toBe("AND (base_table.sample_type = 'Tumor')")
+      expect(whereClause).toBe("AND (base_table.`sample_type` = 'Tumor')")
       expect(whereClause).not.toContain('non_existent_column')
     })
 
@@ -654,10 +654,10 @@ describe('AggregationService - Cross-Table Filtering', () => {
       )
 
       expect(whereClause).toContain(
-        "base_table.patient_id IN (SELECT patient_id FROM biai.samples_abc123 WHERE sample_type = 'Tumor')"
+        "base_table.`patient_id` IN (SELECT `patient_id` FROM biai.samples_abc123 WHERE `sample_type` = 'Tumor')"
       )
       expect(whereClause).toContain(
-        "base_table.patient_id IN (SELECT patient_id FROM biai.treatments_abc123 WHERE treatment_type = 'Chemotherapy')"
+        "base_table.`patient_id` IN (SELECT `patient_id` FROM biai.treatments_abc123 WHERE `treatment_type` = 'Chemotherapy')"
       )
     })
   })
@@ -688,8 +688,8 @@ describe('AggregationService - Cross-Table Filtering', () => {
         mockTablesMetadata
       )
 
-      expect(whereClause).toContain("base_table.sample_type = 'Tumor'")
-      expect(whereClause).toContain("base_table.sample_type = 'Normal'")
+      expect(whereClause).toContain("base_table.`sample_type` = 'Tumor'")
+      expect(whereClause).toContain("base_table.`sample_type` = 'Normal'")
       expect(whereClause).toContain('OR')
     })
 
@@ -717,9 +717,9 @@ describe('AggregationService - Cross-Table Filtering', () => {
         mockTablesMetadata
       )
 
-      expect(whereClause).toContain("base_table.sample_type = 'Tumor'")
+      expect(whereClause).toContain("base_table.`sample_type` = 'Tumor'")
       expect(whereClause).toContain(
-        "base_table.patient_id IN (SELECT patient_id FROM biai.patients_abc123 WHERE radiation_therapy = 'Yes')"
+        "base_table.`patient_id` IN (SELECT `patient_id` FROM biai.patients_abc123 WHERE `radiation_therapy` = 'Yes')"
       )
     })
   })
@@ -765,10 +765,10 @@ describe('AggregationService - countBy metrics', () => {
         {
           alias: 'ancestor_0',
           table: 'biai.patients_raw',
-          on: 'base_table.patient_id = ancestor_0.patient_id'
+          on: 'base_table.`patient_id` = ancestor_0.`patient_id`'
         }
       ],
-      ancestorExpression: 'ancestor_0.patient_id',
+      ancestorExpression: 'ancestor_0.`patient_id`',
       pathSegments: [
         { from_table: 'samples', via_column: 'patient_id', to_table: 'patients', referenced_column: 'patient_id' }
       ],
@@ -884,20 +884,20 @@ describe('AggregationService - countBy metrics', () => {
       {
         alias: 'ancestor_0',
         table: 'biai.samples_raw',
-        on: 'base_table.sample_id = ancestor_0.sample_id'
+        on: 'base_table.`sample_id` = ancestor_0.`sample_id`'
       },
       {
         alias: 'ancestor_1',
         table: 'biai.patients_raw',
-        on: 'ancestor_0.patient_id = ancestor_1.patient_id'
+        on: 'ancestor_0.`patient_id` = ancestor_1.`patient_id`'
       },
       {
         alias: 'ancestor_2',
         table: 'biai.hospitals_raw',
-        on: 'ancestor_1.hospital_id = ancestor_2.hospital_id'
+        on: 'ancestor_1.`hospital_id` = ancestor_2.`hospital_id`'
       }
     ])
-    expect(context.ancestorExpression).toBe('ancestor_2.hospital_id')
+    expect(context.ancestorExpression).toBe('ancestor_2.`hospital_id`')
     expect(context.parentTable).toBe('hospitals')
     expect(context.parentColumn).toBe('hospital_id')
     expect(context.pathSegments).toEqual([
@@ -1041,10 +1041,10 @@ describe('AggregationService - countBy metrics', () => {
 
     // Should use parent-level exclusion: parent_id NOT IN (SELECT patient_id FROM samples WHERE sample_type = 'Primary')
     expect(result).toContain('NOT IN')
-    expect(result).toContain('SELECT patient_id')
+    expect(result).toContain('SELECT `patient_id`')
     expect(result).toContain('FROM biai.samples_raw')
-    expect(result).toContain("sample_type = 'Primary'")
-    expect(result).toContain('base_table.patient_id')
+    expect(result).toContain("`sample_type` = 'Primary'")
+    expect(result).toContain('base_table.`patient_id`')
   })
 
   test('NOT filter with parent counting excludes parents with ANY matching child', () => {
@@ -1081,8 +1081,8 @@ describe('AggregationService - countBy metrics', () => {
 
     // Should exclude parents where ANY child has sample_type IN ('Primary', 'Recurrent')
     expect(result).toContain('NOT IN')
-    expect(result).toContain('SELECT patient_id')
-    expect(result).toContain("sample_type IN ('Primary'")
+    expect(result).toContain('SELECT `patient_id`')
+    expect(result).toContain("`sample_type` IN ('Primary'")
     expect(result).toContain("'Recurrent')")
   })
 
@@ -1111,7 +1111,7 @@ describe('AggregationService - countBy metrics', () => {
 
     // Should use row-level NOT (no subquery)
     expect(result).toContain('NOT')
-    expect(result).toContain("sample_type = 'Primary'")
+    expect(result).toContain("`sample_type` = 'Primary'")
     expect(result).not.toContain('NOT IN')
     expect(result).not.toContain('SELECT')
   })
@@ -1160,7 +1160,7 @@ describe('AggregationService - countBy metrics', () => {
 
     // Parent-level filters should use regular NOT with alias (not exclusion subquery)
     expect(result).toContain('NOT')
-    expect(result).toContain('ancestor_0.age')
+    expect(result).toContain('ancestor_0.`age`')
     expect(result).not.toContain('NOT IN')
   })
 })

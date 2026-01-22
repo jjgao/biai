@@ -2,6 +2,7 @@ import clickhouseClient, { createClickHouseClient, ClickHouseConnectionSettings 
 import { v4 as uuidv4 } from 'uuid'
 import { ColumnMetadata, ParsedData } from './fileParser.js'
 import { analyzeColumn } from './columnAnalyzer.js'
+import { escapeIdentifier } from '../utils/sqlSanitizer.js'
 
 export interface TableRelationship {
   foreign_key: string
@@ -117,8 +118,9 @@ export class DatasetService {
     const databaseType = 'created'
 
     // Create the ClickHouse database
+    // databaseName is already sanitized, escape as defense-in-depth
     await clickhouseClient.command({
-      query: `CREATE DATABASE IF NOT EXISTS ${databaseName}`
+      query: `CREATE DATABASE IF NOT EXISTS ${escapeIdentifier(databaseName)}`
     })
 
     await clickhouseClient.insert({
@@ -366,11 +368,12 @@ export class DatasetService {
         columnType = shouldBeNullable ? `Nullable(${col.type})` : col.type
       }
 
-      return `${col.name} ${columnType}`
+      // Escape column name for SQL safety
+      return `${escapeIdentifier(col.name)} ${columnType}`
     }).join(',\n    ')
 
     const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS ${databaseName}.${tableName} (
+      CREATE TABLE IF NOT EXISTS ${escapeIdentifier(databaseName)}.${escapeIdentifier(tableName)} (
         ${columnDefs}
       ) ENGINE = MergeTree()
       ORDER BY tuple()
@@ -1182,14 +1185,15 @@ export class DatasetService {
     if (dataset.database_type === 'created') {
       for (const table of tables) {
         const { database, table: tableName } = this.parseTableIdentifier(table.clickhouse_table_name)
+        // Escape identifiers for SQL safety
         await clickhouseClient.command({
-          query: `DROP TABLE IF EXISTS ${database}.${tableName}`
+          query: `DROP TABLE IF EXISTS ${escapeIdentifier(database)}.${escapeIdentifier(tableName)}`
         })
       }
 
       if (dataset.database_name) {
         await clickhouseClient.command({
-          query: `DROP DATABASE IF EXISTS ${dataset.database_name}`
+          query: `DROP DATABASE IF EXISTS ${escapeIdentifier(dataset.database_name)}`
         })
       }
     }
@@ -1243,8 +1247,9 @@ export class DatasetService {
     const tableName = tableMetadata[0].table_name
 
     // Drop the table from the dataset's database
+    // Escape identifiers for SQL safety
     await clickhouseClient.command({
-      query: `DROP TABLE IF EXISTS ${dataset.database_name}.${tableName}`
+      query: `DROP TABLE IF EXISTS ${escapeIdentifier(dataset.database_name)}.${escapeIdentifier(tableName)}`
     })
 
     // Delete table metadata from dataset_tables
