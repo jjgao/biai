@@ -131,8 +131,8 @@ describe('DatasetService', () => {
     expect(result.display_name).toBe('Clinical Patients')
     expect(result.row_count).toBe(2)
 
-    // CREATE TABLE command issued inside dataset database
-    expect(commandMock.mock.calls[0]?.[0].query).toContain(`CREATE TABLE IF NOT EXISTS ${datasetMeta.database_name}.`)
+    // CREATE TABLE command issued inside dataset database (with escaped identifiers)
+    expect(commandMock.mock.calls[0]?.[0].query).toContain(`CREATE TABLE IF NOT EXISTS \`${datasetMeta.database_name}\`.`)
     // Dataset timestamp update
     expect(commandMock.mock.calls[1]?.[0].query).toContain('ALTER TABLE biai.datasets_metadata UPDATE')
 

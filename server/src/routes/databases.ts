@@ -3,6 +3,7 @@ import clickhouseClient, { createClickHouseClient } from '../config/clickhouse.j
 import datasetService from '../services/datasetService.js'
 import aggregationService, { Filter } from '../services/aggregationService.js'
 import { parseCountByQuery } from '../utils/countBy.js'
+import { escapeIdentifier } from '../utils/sqlSanitizer.js'
 
 const router = express.Router()
 
@@ -372,12 +373,16 @@ router.get('/:database/tables/:table/aggregations', async (req, res) => {
             : col.type
           const displayType = inferDisplayType(baseType, col.name)
 
+          // Escape identifiers for SQL safety
+          const escapedCol = escapeIdentifier(col.name)
+          const escapedTable = `${escapeIdentifier(database)}.${escapeIdentifier(table)}`
+
           const statsQuery = `
             SELECT
               count() as total_rows,
-              countIf(isNull(${col.name})) as null_count,
-              uniqExact(${col.name}) as unique_count
-            FROM ${database}.${table}
+              countIf(isNull(${escapedCol})) as null_count,
+              uniqExact(${escapedCol}) as unique_count
+            FROM ${escapedTable}
           `
 
           const statsResult = await client.query({
@@ -399,13 +404,13 @@ router.get('/:database/tables/:table/aggregations', async (req, res) => {
           if (displayType === 'categorical' || displayType === 'id') {
             const categoriesQuery = `
               SELECT
-                toString(${col.name}) as value,
-                toString(${col.name}) as display_value,
+                toString(${escapedCol}) as value,
+                toString(${escapedCol}) as display_value,
                 count() as count,
                 count() * 100.0 / ${total_rows} as percentage
-              FROM ${database}.${table}
-              WHERE ${col.name} IS NOT NULL
-              GROUP BY ${col.name}
+              FROM ${escapedTable}
+              WHERE ${escapedCol} IS NOT NULL
+              GROUP BY ${escapedCol}
               ORDER BY count DESC
               LIMIT 50
             `
@@ -421,15 +426,15 @@ router.get('/:database/tables/:table/aggregations', async (req, res) => {
           if (displayType === 'numeric') {
             const numericQuery = `
               SELECT
-                min(${col.name}) as min,
-                max(${col.name}) as max,
-                avg(${col.name}) as mean,
-                median(${col.name}) as median,
-                stddevPop(${col.name}) as stddev,
-                quantile(0.25)(${col.name}) as q25,
-                quantile(0.75)(${col.name}) as q75
-              FROM ${database}.${table}
-              WHERE ${col.name} IS NOT NULL
+                min(${escapedCol}) as min,
+                max(${escapedCol}) as max,
+                avg(${escapedCol}) as mean,
+                median(${escapedCol}) as median,
+                stddevPop(${escapedCol}) as stddev,
+                quantile(0.25)(${escapedCol}) as q25,
+                quantile(0.75)(${escapedCol}) as q75
+              FROM ${escapedTable}
+              WHERE ${escapedCol} IS NOT NULL
             `
 
             const numericResult = await client.query({
@@ -448,12 +453,12 @@ router.get('/:database/tables/:table/aggregations', async (req, res) => {
 
               const histogramQuery = `
                 SELECT
-                  ${min} + floor((${col.name} - ${min}) / ${binWidth}) * ${binWidth} as bin_start,
-                  ${min} + (floor((${col.name} - ${min}) / ${binWidth}) + 1) * ${binWidth} as bin_end,
+                  ${min} + floor((${escapedCol} - ${min}) / ${binWidth}) * ${binWidth} as bin_start,
+                  ${min} + (floor((${escapedCol} - ${min}) / ${binWidth}) + 1) * ${binWidth} as bin_end,
                   count() as count,
                   count() * 100.0 / ${total_rows} as percentage
-                FROM ${database}.${table}
-                WHERE ${col.name} IS NOT NULL
+                FROM ${escapedTable}
+                WHERE ${escapedCol} IS NOT NULL
                 GROUP BY bin_start, bin_end
                 ORDER BY bin_start
               `

@@ -1,4 +1,5 @@
 import clickhouseClient from '../config/clickhouse.js'
+import { escapeIdentifier, validateIdentifierFormat, ensurePositiveInteger } from '../utils/sqlSanitizer.js'
 
 const BASE_TABLE_ALIAS = 'base_table'
 
@@ -127,7 +128,8 @@ const badRequest = (message: string): Error => {
 
 class AggregationService {
   private columnRef(column: string, alias: string = BASE_TABLE_ALIAS): string {
-    return `${alias}.${column}`
+    // Escape column name as defense-in-depth (column should already be validated against schema)
+    return `${alias}.${escapeIdentifier(column)}`
   }
 
   private buildFromClause(qualifiedTableName: string, metricContext: MetricContext): string {
@@ -305,9 +307,10 @@ class AggregationService {
     const qualifiedLastTable = this.qualifyTableName(lastTable.clickhouse_table_name)
 
     // Innermost: SELECT key FROM filter_table WHERE condition
+    // Escape column names from relationship metadata as defense-in-depth
     let subquery = lastStep.direction === 'forward'
-      ? `SELECT ${lastStep.refCol} FROM ${qualifiedLastTable} WHERE ${filterCondition}`
-      : `SELECT ${lastStep.fk} FROM ${qualifiedLastTable} WHERE ${filterCondition}`
+      ? `SELECT ${escapeIdentifier(lastStep.refCol)} FROM ${qualifiedLastTable} WHERE ${filterCondition}`
+      : `SELECT ${escapeIdentifier(lastStep.fk)} FROM ${qualifiedLastTable} WHERE ${filterCondition}`
 
     // Work backwards through the path, wrapping each level
     for (let i = path.length - 2; i >= 0; i--) {
@@ -324,7 +327,8 @@ class AggregationService {
       // Determine WHERE column (what links to next table)
       const whereCol = nextStep.direction === 'forward' ? nextStep.fk : nextStep.refCol
 
-      subquery = `SELECT ${selectCol} FROM ${qualifiedTable} WHERE ${whereCol} IN (${subquery})`
+      // Escape column names as defense-in-depth
+      subquery = `SELECT ${escapeIdentifier(selectCol)} FROM ${qualifiedTable} WHERE ${escapeIdentifier(whereCol)} IN (${subquery})`
     }
 
     // Final wrap: current_table.column IN (subquery) or NOT IN if filter was negated
@@ -467,7 +471,8 @@ class AggregationService {
 
     // Build exclusion subquery
     // Example: parent_id NOT IN (SELECT parent_id FROM samples WHERE sample_type = 'Primary')
-    return `${columnRef} NOT IN (SELECT ${parentFk} FROM ${qualifiedTableName} WHERE ${condition})`
+    // Escape parentFk as defense-in-depth (comes from relationship metadata)
+    return `${columnRef} NOT IN (SELECT ${escapeIdentifier(parentFk)} FROM ${qualifiedTableName} WHERE ${condition})`
   }
 
   /**
@@ -605,9 +610,10 @@ class AggregationService {
       return ''
     }
 
+    // Escape column name for SQL safety (column should already be validated against schema)
     const col =
       alias === null
-        ? filter.column
+        ? escapeIdentifier(filter.column)
         : this.columnRef(filter.column, alias ?? BASE_TABLE_ALIAS)
 
     const isListColumn = listColumns?.has(filter.column) || false
@@ -1250,10 +1256,11 @@ class AggregationService {
       }
 
       const joinAlias = `ancestor_${index}`
+      // Escape column names in JOIN ON condition as defense-in-depth
       joins.push({
         alias: joinAlias,
         table: this.qualifyTableName(toMeta.clickhouse_table_name),
-        on: `${fromAlias}.${step.fk} = ${joinAlias}.${step.refCol}`
+        on: `${fromAlias}.${escapeIdentifier(step.fk)} = ${joinAlias}.${escapeIdentifier(step.refCol)}`
       })
       aliasByTable.set(step.to, joinAlias)
     })

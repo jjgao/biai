@@ -1,5 +1,6 @@
 import clickhouseClient from '../config/clickhouse.js'
 import { looksLikeList, parseListValue, hasNestedLists } from '../utils/listParser.js'
+import { escapeIdentifier } from '../utils/sqlSanitizer.js'
 
 const qualifyTableName = (tableName: string): string =>
   tableName.includes('.') ? tableName : `biai.${tableName}`
@@ -66,20 +67,23 @@ async function getColumnStats(
   const isArrayType = columnType.startsWith('Array(')
   const qualifiedTableName = qualifyTableName(tableName)
 
+  // Escape column name for SQL safety (column names come from CSV headers)
+  const escapedColumn = escapeIdentifier(columnName)
+
   // Get unique count and null count
   // Arrays cannot be null in ClickHouse, only empty
   let nullCondition: string
   if (isArrayType) {
-    nullCondition = `empty(${columnName})`
+    nullCondition = `empty(${escapedColumn})`
   } else if (isNumericType) {
-    nullCondition = `isNull(${columnName})`
+    nullCondition = `isNull(${escapedColumn})`
   } else {
-    nullCondition = `isNull(${columnName}) OR ${columnName} = ''`
+    nullCondition = `isNull(${escapedColumn}) OR ${escapedColumn} = ''`
   }
 
   const countQuery = `
     SELECT
-      uniqExact(${columnName}) as unique_count,
+      uniqExact(${escapedColumn}) as unique_count,
       countIf(${nullCondition}) as null_count,
       count() as total_count
     FROM ${qualifiedTableName}
@@ -102,15 +106,15 @@ async function getColumnStats(
   // Get sample values (up to 100)
   let whereCondition: string
   if (isArrayType) {
-    whereCondition = `NOT empty(${columnName})`
+    whereCondition = `NOT empty(${escapedColumn})`
   } else if (isNumericType) {
-    whereCondition = `${columnName} IS NOT NULL`
+    whereCondition = `${escapedColumn} IS NOT NULL`
   } else {
-    whereCondition = `${columnName} IS NOT NULL AND ${columnName} != ''`
+    whereCondition = `${escapedColumn} IS NOT NULL AND ${escapedColumn} != ''`
   }
 
   const sampleQuery = `
-    SELECT DISTINCT ${columnName}
+    SELECT DISTINCT ${escapedColumn}
     FROM ${qualifiedTableName}
     WHERE ${whereCondition}
     LIMIT 100
@@ -130,10 +134,10 @@ async function getColumnStats(
   if (columnType.includes('Int') || columnType.includes('Float')) {
     const minMaxQuery = `
       SELECT
-        min(${columnName}) as min_val,
-        max(${columnName}) as max_val
+        min(${escapedColumn}) as min_val,
+        max(${escapedColumn}) as max_val
       FROM ${qualifiedTableName}
-      WHERE ${columnName} IS NOT NULL
+      WHERE ${escapedColumn} IS NOT NULL
     `
 
     const minMaxResult = await clickhouseClient.query({
