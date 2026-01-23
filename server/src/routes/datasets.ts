@@ -282,6 +282,47 @@ router.post('/:id/spreadsheets/preview', upload.single('file'), async (req, res)
 
     const preview = await getSpreadsheetPreview(filePath)
 
+    // Detect relationships
+    try {
+      const dataset = await datasetService.getDataset(req.params.id)
+      const existingTables = dataset?.tables || []
+
+      // Create virtual tables for the sheets to allow cross-sheet detection
+      const sheetVirtualTables = preview.sheets.map(sheet => ({
+        table_id: sheet.name.replace(/[^a-z0-9_]/gi, '_').toLowerCase(),
+        table_name: sheet.name.replace(/[^a-z0-9_]/gi, '_').toLowerCase(),
+        display_name: sheet.name,
+        primary_key: sheet.detectedPrimaryKey,
+        schema_json: JSON.stringify(sheet.columnMetadata || []),
+        // Mock other required fields
+        original_filename: '',
+        file_type: '',
+        row_count: sheet.rowCount,
+        clickhouse_table_name: '',
+        created_at: new Date()
+      }))
+
+      for (let i = 0; i < preview.sheets.length; i++) {
+        const sheet = preview.sheets[i]
+        if (!sheet.columnMetadata) continue
+
+        // Potential targets: existing tables + other sheets
+        const otherSheets = sheetVirtualTables.filter((_, idx) => idx !== i)
+        const potentialTargets = [...existingTables, ...otherSheets] as any[]
+
+        const parsedDataStub = {
+          columns: sheet.columnMetadata,
+          rows: [],
+          rowCount: sheet.rowCount
+        }
+
+        sheet.detectedRelationships = await detectForeignKeys(parsedDataStub, potentialTargets)
+      }
+    } catch (e) {
+      console.warn('Failed to detect relationships for spreadsheet:', e)
+      // Continue without relationships
+    }
+
     // Clean up temporary file
     await unlink(tempFilePath)
     tempFilePath = null
@@ -351,7 +392,7 @@ router.post('/:id/spreadsheets/import', upload.single('file'), async (req, res) 
     const importedTables = []
 
     for (const sheetConfig of sheetsConfig) {
-      const { sheetName, tableName, displayName, skipRows = 0 } = sheetConfig
+      const { sheetName, tableName, displayName, skipRows = 0, primaryKey, relationships = [] } = sheetConfig
 
       // Parse sheet data
       const parsedData = await parseSpreadsheetSheet(
@@ -373,9 +414,9 @@ router.post('/:id/spreadsheets/import', upload.single('file'), async (req, res) 
         filename, // Using spreadsheet filename for all tables
         mimetype,
         parsedData,
-        undefined, // Primary key not supported in batch import yet
+        primaryKey,
         {}, // Custom metadata
-        [] // Relationships not supported in Phase 1 batch import yet
+        relationships // Pass detected relationships
       )
 
       importedTables.push({

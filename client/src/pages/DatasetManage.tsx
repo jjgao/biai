@@ -78,6 +78,8 @@ interface SheetImportConfig {
   displayName: string
   selected: boolean
   skipRows: number
+  primaryKey: string
+  relationships: Relationship[]
 }
 
 function DatasetManage() {
@@ -268,7 +270,15 @@ function DatasetManage() {
         tableName: sheet.name.replace(/[^a-z0-9_]/gi, '_').toLowerCase(),
         displayName: sheet.name,
         selected: sheet.rowCount > 1, // Select by default if it has data
-        skipRows: 0
+        skipRows: 0,
+        primaryKey: sheet.detectedPrimaryKey || '',
+        relationships: (sheet.detectedRelationships || []).map((rel: any) => ({
+          foreignKey: rel.foreignKey,
+          referencedTable: rel.referencedTableId,
+          referencedColumn: rel.referencedColumn,
+          type: 'many-to-one',
+          referencedTableDisplayName: rel.referencedTable
+        }))
       })))
     } catch (error: any) {
       console.error('Spreadsheet preview failed:', error)
@@ -353,7 +363,15 @@ function DatasetManage() {
     if (importMode === 'file' && !selectedFile) return
     if (importMode === 'url' && !fileUrl) return
     
-    const selectedSheets = sheetConfigs.filter(s => s.selected)
+    const selectedSheets = sheetConfigs.filter(s => s.selected).map(s => ({
+      sheetName: s.sheetName,
+      tableName: s.tableName,
+      displayName: s.displayName,
+      skipRows: s.skipRows,
+      primaryKey: s.primaryKey,
+      relationships: s.relationships
+    }))
+
     if (selectedSheets.length === 0) {
       alert('Please select at least one sheet to import')
       return
@@ -1017,7 +1035,7 @@ function DatasetManage() {
                         </div>
                         {config.selected && (
                           <div style={{ marginLeft: '1.5rem', marginTop: '1rem' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: '1rem', marginBottom: '1rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 100px', gap: '1rem', marginBottom: '1rem' }}>
                               <div>
                                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#666' }}>Table ID</label>
                                 <input
@@ -1045,6 +1063,23 @@ function DatasetManage() {
                                 />
                               </div>
                               <div>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666' }}>Primary Key</label>
+                                <select
+                                  value={config.primaryKey}
+                                  onChange={(e) => {
+                                    const newConfigs = [...sheetConfigs]
+                                    newConfigs[idx].primaryKey = e.target.value
+                                    setSheetConfigs(newConfigs)
+                                  }}
+                                  style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                                >
+                                  <option value="">None</option>
+                                  {spreadsheetPreview.sheets[idx].columns?.map((col: string) => (
+                                    <option key={col} value={col}>{col}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
                                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#666' }}>Skip Rows</label>
                                 <input
                                   type="number"
@@ -1059,6 +1094,17 @@ function DatasetManage() {
                                 />
                               </div>
                             </div>
+
+                            {config.relationships && config.relationships.length > 0 && (
+                              <div style={{ marginBottom: '1rem' }}>
+                                <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>Detected Relationships:</div>
+                                {config.relationships.map((rel, rIdx) => (
+                                  <div key={rIdx} style={{ fontSize: '0.75rem', padding: '0.25rem', background: '#e3f2fd', borderRadius: '3px', marginBottom: '0.25rem' }}>
+                                    {rel.foreignKey} → {rel.referencedTableDisplayName}.{rel.referencedColumn}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             
                             {spreadsheetPreview.sheets[idx].preview && (
                               <details>
