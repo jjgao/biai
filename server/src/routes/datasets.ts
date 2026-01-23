@@ -1,6 +1,7 @@
 import express from 'express'
 import multer from 'multer'
 import { parseCSVFile, detectSkipRows, detectDelimiter } from '../services/fileParser.js'
+import { getSpreadsheetPreview, parseSpreadsheetSheet } from '../services/spreadsheetParser.js'
 import datasetService from '../services/datasetService.js'
 import aggregationService from '../services/aggregationService.js'
 import { parseCountByQuery } from '../utils/countBy.js'
@@ -21,12 +22,12 @@ const upload = multer({
     fieldSize: 10 * 1024 * 1024 // 10MB for URL field
   },
   fileFilter: (_req, file, cb) => {
-    const allowedTypes = ['.csv', '.txt', '.tsv']
+    const allowedTypes = ['.csv', '.txt', '.tsv', '.xlsx', '.xls', '.ods']
     const ext = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'))
     if (allowedTypes.includes(ext)) {
       cb(null, true)
     } else {
-      cb(new Error('Only CSV, TSV, and TXT files are allowed'))
+      cb(new Error('Only CSV, TSV, TXT, XLSX, XLS, and ODS files are allowed'))
     }
   }
 })
@@ -250,6 +251,198 @@ router.post('/:id/tables/preview', upload.single('file'), async (req, res) => {
     }
 
     return res.status(500).json({ error: 'Failed to preview table', message: error.message })
+  }
+})
+
+// Preview spreadsheet sheets
+router.post('/:id/spreadsheets/preview', upload.single('file'), async (req, res) => {
+  let tempFilePath: string | null = null
+
+  try {
+    const { fileUrl } = req.body
+
+    // Handle either file upload or URL
+    let filePath: string
+    let filename: string
+
+    if (fileUrl) {
+      // Fetch file from URL
+      tempFilePath = path.join('uploads', `preview_sheet_${uuidv4()}`)
+      const fetchedFile = await fetchFileFromUrl(fileUrl, tempFilePath)
+      filePath = fetchedFile.path
+      filename = fetchedFile.filename
+    } else if (req.file) {
+      // Use uploaded file
+      filePath = req.file.path
+      filename = req.file.originalname
+      tempFilePath = filePath
+    } else {
+      return res.status(400).json({ error: 'Either file upload or fileUrl is required' })
+    }
+
+    const preview = await getSpreadsheetPreview(filePath)
+
+    // Detect relationships
+    try {
+      const dataset = await datasetService.getDataset(req.params.id)
+      const existingTables = dataset?.tables || []
+
+      // Create virtual tables for the sheets to allow cross-sheet detection
+      const sheetVirtualTables = preview.sheets.map(sheet => ({
+        table_id: sheet.name.replace(/[^a-z0-9_]/gi, '_').toLowerCase(),
+        table_name: sheet.name.replace(/[^a-z0-9_]/gi, '_').toLowerCase(),
+        display_name: sheet.name,
+        primary_key: sheet.detectedPrimaryKey,
+        schema_json: JSON.stringify(sheet.columnMetadata || []),
+        // Mock other required fields
+        original_filename: '',
+        file_type: '',
+        row_count: sheet.rowCount,
+        clickhouse_table_name: '',
+        created_at: new Date()
+      }))
+
+      for (let i = 0; i < preview.sheets.length; i++) {
+        const sheet = preview.sheets[i]
+        if (!sheet.columnMetadata) continue
+
+        // Potential targets: existing tables + other sheets
+        const otherSheets = sheetVirtualTables.filter((_, idx) => idx !== i)
+        const potentialTargets = [...existingTables, ...otherSheets] as any[]
+
+        const parsedDataStub = {
+          columns: sheet.columnMetadata,
+          rows: [],
+          rowCount: sheet.rowCount
+        }
+
+        sheet.detectedRelationships = await detectForeignKeys(parsedDataStub, potentialTargets)
+      }
+    } catch (e) {
+      console.warn('Failed to detect relationships for spreadsheet:', e)
+      // Continue without relationships
+    }
+
+    // Clean up temporary file
+    await unlink(tempFilePath)
+    tempFilePath = null
+
+    return res.json({
+      success: true,
+      preview
+    })
+  } catch (error: any) {
+    console.error('Spreadsheet preview error:', error)
+
+    if (tempFilePath) {
+      try {
+        await unlink(tempFilePath)
+      } catch (e) {}
+    }
+
+    return res.status(500).json({ error: 'Failed to preview spreadsheet', message: error.message })
+  }
+})
+
+// Import spreadsheet sheets as tables
+router.post('/:id/spreadsheets/import', upload.single('file'), async (req, res) => {
+  let tempFilePath: string | null = null
+
+  try {
+    req.setTimeout(600000) // 10 minutes
+    res.setTimeout(600000)
+
+    const {
+      fileUrl,
+      sheetsConfig: sheetsConfigStr
+    } = req.body
+
+    let sheetsConfig: any[]
+    try {
+      sheetsConfig = JSON.parse(sheetsConfigStr)
+      if (!Array.isArray(sheetsConfig) || sheetsConfig.length === 0) {
+        throw new Error('Invalid sheets configuration')
+      }
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid sheets configuration JSON' })
+    }
+
+    // Handle either file upload or URL
+    let filePath: string
+    let filename: string
+    let mimetype: string
+
+    if (fileUrl) {
+      // Fetch file from URL
+      tempFilePath = path.join('uploads', `import_sheet_${uuidv4()}`)
+      const fetchedFile = await fetchFileFromUrl(fileUrl, tempFilePath)
+      filePath = fetchedFile.path
+      filename = fetchedFile.filename
+      mimetype = fetchedFile.mimetype
+    } else if (req.file) {
+      // Use uploaded file
+      filePath = req.file.path
+      filename = req.file.originalname
+      mimetype = req.file.mimetype
+      tempFilePath = filePath
+    } else {
+      return res.status(400).json({ error: 'Either file upload or fileUrl is required' })
+    }
+
+    const importedTables = []
+
+    for (const sheetConfig of sheetsConfig) {
+      const { sheetName, tableName, displayName, skipRows = 0, primaryKey, relationships = [] } = sheetConfig
+
+      // Parse sheet data
+      const parsedData = await parseSpreadsheetSheet(
+        filePath,
+        sheetName,
+        skipRows
+      )
+
+      if (parsedData.columns.length === 0) {
+        console.warn(`Skipping empty sheet: ${sheetName}`)
+        continue
+      }
+
+      // Add table to dataset
+      const table = await datasetService.addTableToDataset(
+        req.params.id,
+        tableName,
+        displayName || tableName,
+        filename, // Using spreadsheet filename for all tables
+        mimetype,
+        parsedData,
+        primaryKey,
+        {}, // Custom metadata
+        relationships // Pass detected relationships
+      )
+
+      importedTables.push({
+        id: table.table_id,
+        name: table.table_name,
+        rowCount: table.row_count
+      })
+    }
+
+    await unlink(tempFilePath)
+    tempFilePath = null
+
+    return res.json({
+      success: true,
+      importedTables
+    })
+  } catch (error: any) {
+    console.error('Spreadsheet import error:', error)
+
+    if (tempFilePath) {
+      try {
+        await unlink(tempFilePath)
+      } catch (e) {}
+    }
+
+    return res.status(500).json({ error: 'Failed to import spreadsheet', message: error.message })
   }
 })
 
