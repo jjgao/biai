@@ -262,6 +262,7 @@ function DatasetManage() {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       setSpreadsheetPreview(response.data.preview)
+      setPreviewData(null)
       setSheetConfigs(response.data.preview.sheets.map((sheet: any) => ({
         sheetName: sheet.name,
         tableName: sheet.name.replace(/[^a-z0-9_]/gi, '_').toLowerCase(),
@@ -297,6 +298,7 @@ function DatasetManage() {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       setPreviewData(response.data.preview)
+      setSpreadsheetPreview(null)
       setConfirmedRelationships(response.data.preview.detectedRelationships || [])
 
       // Auto-select high-confidence list columns
@@ -1465,7 +1467,7 @@ function DatasetManage() {
 
               <button
                 type="submit"
-                disabled={uploading || !previewData || (importMode === 'file' && !selectedFile) || (importMode === 'url' && !fileUrl)}
+                disabled={uploading || (!previewData && !spreadsheetPreview) || (importMode === 'file' && !selectedFile) || (importMode === 'url' && !fileUrl)}
                 style={{
                   padding: '0.75rem 1.5rem',
                   background: uploading ? '#ccc' : '#4CAF50',
