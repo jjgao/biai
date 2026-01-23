@@ -90,38 +90,48 @@ function inferType(
 }
 
 export async function getSpreadsheetPreview(filePath: string): Promise<SpreadsheetPreview> {
-  const workbook = XLSX.readFile(filePath, { type: 'file', cellDates: true })
-  const sheets: SheetInfo[] = []
+  try {
+    console.log(`Reading spreadsheet from: ${filePath}`)
+    const workbook = XLSX.readFile(filePath, { type: 'file', cellDates: true })
+    const sheets: SheetInfo[] = []
 
-  for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName]
-    // Get dimensions
-    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1')
-    const rowCount = range.e.r + 1 // 0-indexed
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName]
+      // Get dimensions
+      const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1')
+      const rowCount = range.e.r + 1 // 0-indexed
 
-    // Get header row (first row)
-    const headers: string[] = []
-    for (let C = range.s.c; C <= range.e.c; ++C) {
-      const cellAddress = { c: C, r: range.s.r }
-      const cellRef = XLSX.utils.encode_cell(cellAddress)
-      const cell = sheet[cellRef]
-      headers.push(cell ? String(cell.v) : `column_${C + 1}`)
+      // Get header row (first row)
+      const headers: string[] = []
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellAddress = { c: C, r: range.s.r }
+        const cellRef = XLSX.utils.encode_cell(cellAddress)
+        const cell = sheet[cellRef]
+        headers.push(cell ? String(cell.v) : `column_${C + 1}`)
+      }
+
+      // Get preview data (first 6 rows: 1 header + 5 data)
+      const previewData = XLSX.utils.sheet_to_json(sheet, { 
+        header: 1, 
+        range: { s: { r: 0, c: 0 }, e: { r: 5, c: 1000 } }, // Limit to first 6 rows and 1000 cols for preview
+        blankrows: false 
+      }) as any[][]
+
+      sheets.push({
+        name: sheetName,
+        rowCount,
+        columns: headers,
+        preview: previewData
+      })
     }
 
-    // Get preview data (first 5 rows)
-    const previewData = XLSX.utils.sheet_to_json(sheet, { header: 1, range: 5, blankrows: false }) as any[][]
-
-    sheets.push({
-      name: sheetName,
-      rowCount,
-      columns: headers,
-      preview: previewData
-    })
-  }
-
-  return {
-    filename: filePath.split('/').pop() || 'spreadsheet',
-    sheets
+    return {
+      filename: filePath.split('/').pop() || 'spreadsheet',
+      sheets
+    }
+  } catch (error) {
+    console.error('Error in getSpreadsheetPreview:', error)
+    throw error
   }
 }
 
