@@ -60,6 +60,26 @@ interface ColumnMetadataUpdate {
   displayType?: string
 }
 
+interface SheetInfo {
+  name: string
+  rowCount: number
+  preview?: any[][]
+  columns?: string[]
+}
+
+interface SpreadsheetPreview {
+  filename: string
+  sheets: SheetInfo[]
+}
+
+interface SheetImportConfig {
+  sheetName: string
+  tableName: string
+  displayName: string
+  selected: boolean
+  skipRows: number
+}
+
 function DatasetManage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -105,6 +125,11 @@ function DatasetManage() {
   const [selectedListColumns, setSelectedListColumns] = useState<Map<string, 'python' | 'json'>>(new Map())
   const [wasDelimiterDetected, setWasDelimiterDetected] = useState(false)
   const [detectedDelimiterName, setDetectedDelimiterName] = useState<string>('')
+  
+  // Spreadsheet specific state
+  const [isSpreadsheet, setIsSpreadsheet] = useState(false)
+  const [spreadsheetPreview, setSpreadsheetPreview] = useState<SpreadsheetPreview | null>(null)
+  const [sheetConfigs, setSheetConfigs] = useState<SheetImportConfig[]>([])
 
   useEffect(() => {
     fetchDataset()
@@ -184,19 +209,32 @@ function DatasetManage() {
       // Reset auto-detect indicator when new file is selected
       setWasDelimiterDetected(false)
       setDetectedDelimiterName('')
+      
+      const isSheet = file.name.match(/\.(xlsx|xls|ods)$/i)
+      setIsSpreadsheet(!!isSheet)
+      
       if (!tableName) {
         const name = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9_]/gi, '_').toLowerCase()
         setTableName(name)
         setDisplayName(file.name.replace(/\.[^/.]+$/, ''))
       }
+      
       // Auto-trigger preview
-      setTimeout(() => loadPreview(file, null), 100)
+      if (isSheet) {
+        setTimeout(() => loadSpreadsheetPreview(file, null), 100)
+      } else {
+        setTimeout(() => loadPreview(file, null), 100)
+      }
     }
   }
 
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const url = e.target.value
     setFileUrl(url)
+    
+    const isSheet = url.split('?')[0].match(/\.(xlsx|xls|ods)$/i)
+    setIsSpreadsheet(!!isSheet)
+    
     if (!tableName && url) {
       // Extract filename from URL
       const urlPath = url.split('?')[0]
@@ -204,6 +242,38 @@ function DatasetManage() {
       const name = filename.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9_]/gi, '_').toLowerCase()
       setTableName(name)
       setDisplayName(filename.replace(/\.[^/.]+$/, ''))
+    }
+  }
+
+  const loadSpreadsheetPreview = async (file: File | null, url: string | null) => {
+    const formData = new FormData()
+
+    if (file) {
+      formData.append('file', file)
+    } else if (url) {
+      formData.append('fileUrl', url)
+    } else {
+      return
+    }
+
+    try {
+      setLoadingPreview(true)
+      const response = await api.post(`/datasets/${id}/spreadsheets/preview`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      setSpreadsheetPreview(response.data.preview)
+      setSheetConfigs(response.data.preview.sheets.map((sheet: any) => ({
+        sheetName: sheet.name,
+        tableName: sheet.name.replace(/[^a-z0-9_]/gi, '_').toLowerCase(),
+        displayName: sheet.name,
+        selected: sheet.rowCount > 1, // Select by default if it has data
+        skipRows: 0
+      })))
+    } catch (error: any) {
+      console.error('Spreadsheet preview failed:', error)
+      setSpreadsheetPreview(null)
+    } finally {
+      setLoadingPreview(false)
     }
   }
 
@@ -277,8 +347,53 @@ function DatasetManage() {
     }
   }, [skipRows, delimiter])
 
+  const handleSpreadsheetImport = async () => {
+    if (importMode === 'file' && !selectedFile) return
+    if (importMode === 'url' && !fileUrl) return
+    
+    const selectedSheets = sheetConfigs.filter(s => s.selected)
+    if (selectedSheets.length === 0) {
+      alert('Please select at least one sheet to import')
+      return
+    }
+
+    const formData = new FormData()
+
+    if (importMode === 'file' && selectedFile) {
+      formData.append('file', selectedFile)
+    } else if (importMode === 'url') {
+      formData.append('fileUrl', fileUrl)
+    }
+
+    formData.append('sheetsConfig', JSON.stringify(selectedSheets))
+
+    try {
+      setUploading(true)
+      await api.post(`/datasets/${id}/spreadsheets/import`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 600000
+      })
+      setShowAddTable(false)
+      setSelectedFile(null)
+      setFileUrl('')
+      setIsSpreadsheet(false)
+      setSpreadsheetPreview(null)
+      await fetchDataset()
+    } catch (error: any) {
+      console.error('Spreadsheet import failed:', error)
+      alert('Spreadsheet import failed: ' + (error.response?.data?.message || error.message))
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const handleAddTable = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (isSpreadsheet) {
+      return handleSpreadsheetImport()
+    }
+
     if (importMode === 'file' && !selectedFile) return
     if (importMode === 'url' && !fileUrl) return
     if (!tableName) return
@@ -741,7 +856,7 @@ function DatasetManage() {
               {importMode === 'file' ? (
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ display: 'block', marginBottom: '0.5rem' }}>File</label>
-                  <input type="file" accept=".csv,.txt,.tsv" onChange={handleFileSelect} required />
+                  <input type="file" accept=".csv,.txt,.tsv,.xlsx,.xls,.ods" onChange={handleFileSelect} required />
                 </div>
               ) : (
                 <div style={{ marginBottom: '1rem' }}>
@@ -751,14 +866,26 @@ function DatasetManage() {
                       type="url"
                       value={fileUrl}
                       onChange={handleUrlChange}
-                      onBlur={() => fileUrl && loadPreview(null, fileUrl)}
+                      onBlur={() => {
+                        if (fileUrl) {
+                          const isSheet = fileUrl.split('?')[0].match(/\.(xlsx|xls|ods)$/i)
+                          if (isSheet) loadSpreadsheetPreview(null, fileUrl)
+                          else loadPreview(null, fileUrl)
+                        }
+                      }}
                       placeholder=""
                       style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
                       required
                     />
                     <button
                       type="button"
-                      onClick={() => fileUrl && loadPreview(null, fileUrl)}
+                      onClick={() => {
+                        if (fileUrl) {
+                          const isSheet = fileUrl.split('?')[0].match(/\.(xlsx|xls|ods)$/i)
+                          if (isSheet) loadSpreadsheetPreview(null, fileUrl)
+                          else loadPreview(null, fileUrl)
+                        }
+                      }}
                       disabled={!fileUrl || loadingPreview}
                       style={{
                         padding: '0.5rem 1rem',
@@ -774,91 +901,207 @@ function DatasetManage() {
                     </button>
                   </div>
                   <small style={{ color: '#666', fontSize: '0.875rem' }}>
-                    Provide a direct URL to a CSV, TSV, or TXT file and click Load
+                    Provide a direct URL to a CSV, TSV, TXT, or Spreadsheet file and click Load
                   </small>
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem' }}>Table Name (identifier) *</label>
-                  <input
-                    type="text"
-                    value={tableName}
-                    onChange={(e) => setTableName(e.target.value)}
-                    required
-                    placeholder=""
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem' }}>Display Name</label>
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder=""
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem' }}>Skip Rows</label>
-                  <input
-                    type="number"
-                    value={skipRows}
-                    onChange={(e) => setSkipRows(e.target.value)}
-                    min="0"
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem' }}>Delimiter</label>
-                  <select
-                    value={delimiter}
-                    onChange={(e) => {
-                      setDelimiter(e.target.value)
-                      // If user manually changes delimiter, clear auto-detect indicator
-                      if (wasDelimiterDetected) {
-                        setWasDelimiterDetected(false)
-                      }
-                    }}
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
-                  >
-                    <option value="\t">Tab</option>
-                    <option value=",">Comma</option>
-                    <option value=";">Semicolon</option>
-                    <option value="|">Pipe</option>
-                  </select>
-                  {wasDelimiterDetected && (
-                    <div
-                      style={{
-                        marginTop: '0.25rem',
-                        fontSize: '0.75rem',
-                        color: '#4CAF50',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.25rem'
-                      }}
-                    >
-                      <span>✓</span>
-                      <span>Auto-detected: {detectedDelimiterName}</span>
+              {!isSpreadsheet && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem' }}>Table Name (identifier) *</label>
+                      <input
+                        type="text"
+                        value={tableName}
+                        onChange={(e) => setTableName(e.target.value)}
+                        required={!isSpreadsheet}
+                        placeholder=""
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                      />
                     </div>
-                  )}
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem' }}>Display Name</label>
+                      <input
+                        type="text"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        placeholder=""
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem' }}>Skip Rows</label>
+                      <input
+                        type="number"
+                        value={skipRows}
+                        onChange={(e) => setSkipRows(e.target.value)}
+                        min="0"
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem' }}>Delimiter</label>
+                      <select
+                        value={delimiter}
+                        onChange={(e) => {
+                          setDelimiter(e.target.value)
+                          // If user manually changes delimiter, clear auto-detect indicator
+                          if (wasDelimiterDetected) {
+                            setWasDelimiterDetected(false)
+                          }
+                        }}
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                      >
+                        <option value="\t">Tab</option>
+                        <option value=",">Comma</option>
+                        <option value=";">Semicolon</option>
+                        <option value="|">Pipe</option>
+                      </select>
+                      {wasDelimiterDetected && (
+                        <div
+                          style={{
+                            marginTop: '0.25rem',
+                            fontSize: '0.75rem',
+                            color: '#4CAF50',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}
+                        >
+                          <span>✓</span>
+                          <span>Auto-detected: {detectedDelimiterName}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem' }}>Primary Key (optional)</label>
+                      <input
+                        type="text"
+                        value={primaryKey}
+                        onChange={(e) => setPrimaryKey(e.target.value)}
+                        placeholder=""
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Spreadsheet Section */}
+              {isSpreadsheet && spreadsheetPreview && (
+                <div style={{ marginBottom: '1rem', padding: '1.5rem', background: '#f9f9f9', borderRadius: '4px', border: '1px solid #ddd' }}>
+                  <h4 style={{ marginTop: 0, marginBottom: '1rem' }}>Spreadsheet Sheets</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {sheetConfigs.map((config, idx) => (
+                      <div key={idx} style={{ padding: '1rem', background: 'white', border: '1px solid #eee', borderRadius: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={config.selected}
+                            onChange={(e) => {
+                              const newConfigs = [...sheetConfigs]
+                              newConfigs[idx].selected = e.target.checked
+                              setSheetConfigs(newConfigs)
+                            }}
+                          />
+                          <strong style={{ flex: 1 }}>{config.sheetName}</strong>
+                          <span style={{ fontSize: '0.875rem', color: '#666' }}>
+                            {spreadsheetPreview.sheets[idx].rowCount} rows
+                          </span>
+                        </div>
+                        {config.selected && (
+                          <div style={{ marginLeft: '1.5rem', marginTop: '1rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: '1rem', marginBottom: '1rem' }}>
+                              <div>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666' }}>Table ID</label>
+                                <input
+                                  type="text"
+                                  value={config.tableName}
+                                  onChange={(e) => {
+                                    const newConfigs = [...sheetConfigs]
+                                    newConfigs[idx].tableName = e.target.value
+                                    setSheetConfigs(newConfigs)
+                                  }}
+                                  style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666' }}>Display Name</label>
+                                <input
+                                  type="text"
+                                  value={config.displayName}
+                                  onChange={(e) => {
+                                    const newConfigs = [...sheetConfigs]
+                                    newConfigs[idx].displayName = e.target.value
+                                    setSheetConfigs(newConfigs)
+                                  }}
+                                  style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666' }}>Skip Rows</label>
+                                <input
+                                  type="number"
+                                  value={config.skipRows}
+                                  min="0"
+                                  onChange={(e) => {
+                                    const newConfigs = [...sheetConfigs]
+                                    newConfigs[idx].skipRows = parseInt(e.target.value, 10) || 0
+                                    setSheetConfigs(newConfigs)
+                                  }}
+                                  style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                                />
+                              </div>
+                            </div>
+                            
+                            {spreadsheetPreview.sheets[idx].preview && (
+                              <details>
+                                <summary style={{ fontSize: '0.75rem', cursor: 'pointer', color: '#2196F3' }}>
+                                  Preview Data
+                                </summary>
+                                <div style={{ 
+                                  marginTop: '0.5rem', 
+                                  overflowX: 'auto', 
+                                  maxHeight: '200px', 
+                                  border: '1px solid #eee',
+                                  borderRadius: '4px'
+                                }}>
+                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem' }}>
+                                    <thead style={{ position: 'sticky', top: 0, background: '#f5f5f5' }}>
+                                      <tr>
+                                        {spreadsheetPreview.sheets[idx].columns?.map((col, cIdx) => (
+                                          <th key={cIdx} style={{ padding: '0.25rem 0.5rem', textAlign: 'left', borderBottom: '1px solid #ddd' }}>
+                                            {col}
+                                          </th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {spreadsheetPreview.sheets[idx].preview?.slice(1, 6).map((row, rIdx) => (
+                                        <tr key={rIdx} style={{ borderBottom: '1px solid #eee' }}>
+                                          {row.map((cell: any, cIdx: number) => (
+                                            <td key={cIdx} style={{ padding: '0.25rem 0.5rem' }}>
+                                              {String(cell ?? '')}
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </details>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem' }}>Primary Key (optional)</label>
-                  <input
-                    type="text"
-                    value={primaryKey}
-                    onChange={(e) => setPrimaryKey(e.target.value)}
-                    placeholder=""
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Preview Section */}
               {loadingPreview && (
