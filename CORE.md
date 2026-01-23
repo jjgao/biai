@@ -445,3 +445,5 @@ How to measure completion
 - #92 - DatasetExplorer refactoring (epic)
 - #95 - E2E testing
 - #76 - Temporal filtering epic (7 phases)
+- #105 - Frontend-only mode with DuckDB-WASM
+- #107 - Import to existing tables (Append/Replace/Upsert)
