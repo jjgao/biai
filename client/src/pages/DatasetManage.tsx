@@ -1053,7 +1053,7 @@ function DatasetManage() {
               {/* Spreadsheet Section */}
               {isSpreadsheet && spreadsheetPreview && (
                 <div style={{ marginBottom: '1rem', padding: '1.5rem', background: '#f9f9f9', borderRadius: '4px', border: '1px solid #ddd' }}>
-                  <h4 style={{ marginTop: 0, marginBottom: '1rem' }}>Spreadsheet Sheets</h4>
+                  <h4 style={{ marginTop: 0, marginBottom: '1rem' }}>Spreadsheet Sheets ({sheetConfigs.length})</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     {sheetConfigs.map((config, idx) => (
                       <div key={idx} style={{ padding: '1rem', background: 'white', border: '1px solid #eee', borderRadius: '4px' }}>
@@ -1643,7 +1643,11 @@ function DatasetManage() {
                   cursor: uploading ? 'not-allowed' : 'pointer'
                 }}
               >
-                {uploading ? 'Adding...' : 'Add Table'}
+                {uploading 
+                  ? 'Adding...' 
+                  : (isSpreadsheet && sheetConfigs.filter(s => s.selected).length > 1 
+                      ? `Add ${sheetConfigs.filter(s => s.selected).length} Tables` 
+                      : 'Add Table')}
               </button>
             </form>
           </div>
