@@ -392,7 +392,7 @@ router.post('/:id/spreadsheets/import', upload.single('file'), async (req, res) 
     const importedTables = []
 
     for (const sheetConfig of sheetsConfig) {
-      const { sheetName, tableName, displayName, skipRows = 0, primaryKey, relationships = [] } = sheetConfig
+      const { sheetName, tableName, displayName, skipRows = 0, primaryKey, relationships = [], importMode, targetTableId } = sheetConfig
 
       // Parse sheet data
       const parsedData = await parseSpreadsheetSheet(
@@ -416,7 +416,9 @@ router.post('/:id/spreadsheets/import', upload.single('file'), async (req, res) 
         parsedData,
         primaryKey,
         {}, // Custom metadata
-        relationships // Pass detected relationships
+        relationships, // Pass detected relationships
+        importMode,
+        targetTableId
       )
 
       importedTables.push({
@@ -464,7 +466,9 @@ router.post('/:id/tables', upload.single('file'), async (req, res) => {
       customMetadata = '{}',
       relationships = '[]',
       columnMetadataConfig = '{}',
-      listColumns = '{}'
+      listColumns = '{}',
+      importMode = 'append',
+      targetTableId
     } = req.body
 
     // Handle either file upload or URL
@@ -551,7 +555,9 @@ router.post('/:id/tables', upload.single('file'), async (req, res) => {
       parsedData,
       primaryKey,
       parsedCustomMetadata,
-      parsedRelationships
+      parsedRelationships,
+      importMode as any,
+      targetTableId
     )
 
     await unlink(tempFilePath)

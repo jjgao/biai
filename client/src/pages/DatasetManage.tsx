@@ -80,6 +80,8 @@ interface SheetImportConfig {
   skipRows: number
   primaryKey: string
   relationships: Relationship[]
+  importMode: 'append' | 'replace' | 'upsert'
+  targetTableId: string
 }
 
 function DatasetManage() {
@@ -128,6 +130,11 @@ function DatasetManage() {
   const [wasDelimiterDetected, setWasDelimiterDetected] = useState(false)
   const [detectedDelimiterName, setDetectedDelimiterName] = useState<string>('')
   
+  // Import configuration
+  const [importTarget, setImportTarget] = useState<'new' | 'existing'>('new')
+  const [targetTableId, setTargetTableId] = useState('')
+  const [importModeType, setImportModeType] = useState<'append' | 'replace' | 'upsert'>('append')
+
   // Spreadsheet specific state
   const [isSpreadsheet, setIsSpreadsheet] = useState(false)
   const [spreadsheetPreview, setSpreadsheetPreview] = useState<SpreadsheetPreview | null>(null)
@@ -278,7 +285,9 @@ function DatasetManage() {
           referencedColumn: rel.referencedColumn,
           type: 'many-to-one',
           referencedTableDisplayName: rel.referencedTable
-        }))
+        })),
+        importMode: 'append',
+        targetTableId: ''
       })))
     } catch (error: any) {
       console.error('Spreadsheet preview failed:', error)
@@ -369,7 +378,9 @@ function DatasetManage() {
       displayName: s.displayName,
       skipRows: s.skipRows,
       primaryKey: s.primaryKey,
-      relationships: s.relationships
+      relationships: s.relationships,
+      importMode: s.importMode,
+      targetTableId: s.targetTableId
     }))
 
     if (selectedSheets.length === 0) {
@@ -455,7 +466,8 @@ function DatasetManage() {
 
     if (importMode === 'file' && !selectedFile) return
     if (importMode === 'url' && !fileUrl) return
-    if (!tableName) return
+    if (importTarget === 'new' && !tableName) return
+    if (importTarget === 'existing' && !targetTableId) return
 
     const formData = new FormData()
 
@@ -465,10 +477,18 @@ function DatasetManage() {
       formData.append('fileUrl', fileUrl)
     }
 
-    formData.append('tableName', tableName)
-    formData.append('displayName', displayName || tableName)
+    if (importTarget === 'existing') {
+      formData.append('targetTableId', targetTableId)
+      formData.append('importMode', importModeType)
+      const targetTable = dataset?.tables.find(t => t.id === targetTableId)
+      formData.append('tableName', targetTable?.name || 'existing_table')
+    } else {
+      formData.append('tableName', tableName)
+      formData.append('displayName', displayName || tableName)
+    }
+
     formData.append('skipRows', skipRows)
-    formData.append('delimiter', delimiter)
+    formData('delimiter', delimiter)
 
     // Use selected primary key from preview or manual input
     const finalPrimaryKey = selectedPrimaryKey || primaryKey
@@ -477,9 +497,9 @@ function DatasetManage() {
     // Add confirmed relationships
     if (confirmedRelationships.length > 0) {
       const relationships = confirmedRelationships.map(rel => ({
-        foreign_key: rel.foreignKey,
+        foreignKey: rel.foreignKey,
         referenced_table: rel.referencedTable,
-        referenced_column: rel.referencedColumn
+        referenced_column: rel.referenced_column
       }))
       formData.append('relationships', JSON.stringify(relationships))
     }
@@ -503,6 +523,8 @@ function DatasetManage() {
       setDisplayName('')
       setSkipRows('0')
       setPrimaryKey('')
+      setImportTarget('new')
+      setTargetTableId('')
       await fetchDataset()
     } catch (error: any) {
       console.error('Add table failed:', error)
@@ -967,29 +989,94 @@ function DatasetManage() {
 
               {!isSpreadsheet && (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '0.5rem' }}>Table Name (identifier) *</label>
-                      <input
-                        type="text"
-                        value={tableName}
-                        onChange={(e) => setTableName(e.target.value)}
-                        required={!isSpreadsheet}
-                        placeholder=""
-                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
-                      />
+                  <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f5f5f5', borderRadius: '4px' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Target</label>
+                    <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="importTarget"
+                          value="new"
+                          checked={importTarget === 'new'}
+                          onChange={() => setImportTarget('new')}
+                        />
+                        Create New Table
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="importTarget"
+                          value="existing"
+                          checked={importTarget === 'existing'}
+                          onChange={() => setImportTarget('existing')}
+                          disabled={!dataset?.tables || dataset.tables.length === 0}
+                        />
+                        Import to Existing Table
+                      </label>
                     </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '0.5rem' }}>Display Name</label>
-                      <input
-                        type="text"
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        placeholder=""
-                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
-                      />
-                    </div>
+
+                    {importTarget === 'existing' && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem' }}>Select Table</label>
+                          <select
+                            value={targetTableId}
+                            onChange={(e) => setTargetTableId(e.target.value)}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                            required
+                          >
+                            <option value="">-- Select Table --</option>
+                            {dataset?.tables.map(t => (
+                              <option key={t.id} value={t.id}>{t.displayName} ({t.rowCount.toLocaleString()} rows)</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem' }}>Import Mode</label>
+                          <select
+                            value={importModeType}
+                            onChange={(e) => setImportModeType(e.target.value as any)}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                          >
+                            <option value="append">Append (Add rows)</option>
+                            <option value="replace">Replace (Overwrite table)</option>
+                            <option value="upsert">Upsert (Update by PK)</option>
+                          </select>
+                          <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
+                            {importModeType === 'append' && 'Adds new rows. May create duplicates if no PK.'}
+                            {importModeType === 'replace' && 'Deletes ALL existing rows first.'}
+                            {importModeType === 'upsert' && 'Updates rows with matching Primary Key.'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
+
+                  {importTarget === 'new' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>Table Name (identifier) *</label>
+                        <input
+                          type="text"
+                          value={tableName}
+                          onChange={(e) => setTableName(e.target.value)}
+                          required={!isSpreadsheet && importTarget === 'new'}
+                          placeholder=""
+                          style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>Display Name</label>
+                        <input
+                          type="text"
+                          value={displayName}
+                          onChange={(e) => setDisplayName(e.target.value)}
+                          placeholder=""
+                          style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                     <div>
@@ -1074,20 +1161,64 @@ function DatasetManage() {
                         </div>
                         {config.selected && (
                           <div style={{ marginLeft: '1.5rem', marginTop: '1rem' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 100px', gap: '1rem', marginBottom: '1rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 100px', gap: '1rem', marginBottom: '1rem' }}>
                               <div>
-                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666' }}>Table ID</label>
-                                <input
-                                  type="text"
-                                  value={config.tableName}
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666' }}>Target</label>
+                                <select
+                                  value={config.targetTableId || ''}
                                   onChange={(e) => {
                                     const newConfigs = [...sheetConfigs]
-                                    newConfigs[idx].tableName = e.target.value
+                                    newConfigs[idx].targetTableId = e.target.value
+                                    if (e.target.value) {
+                                      // If selecting existing table, default to append
+                                      newConfigs[idx].importMode = 'append'
+                                    } else {
+                                      newConfigs[idx].importMode = 'append' // Reset
+                                    }
                                     setSheetConfigs(newConfigs)
                                   }}
                                   style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
-                                />
+                                >
+                                  <option value="">New Table</option>
+                                  {dataset?.tables.map(t => (
+                                    <option key={t.id} value={t.id}>{t.displayName}</option>
+                                  ))}
+                                </select>
                               </div>
+
+                              {config.targetTableId ? (
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#666' }}>Import Mode</label>
+                                  <select
+                                    value={config.importMode}
+                                    onChange={(e) => {
+                                      const newConfigs = [...sheetConfigs]
+                                      newConfigs[idx].importMode = e.target.value as any
+                                      setSheetConfigs(newConfigs)
+                                    }}
+                                    style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                                  >
+                                    <option value="append">Append</option>
+                                    <option value="replace">Replace</option>
+                                    <option value="upsert">Upsert</option>
+                                  </select>
+                                </div>
+                              ) : (
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#666' }}>Table ID</label>
+                                  <input
+                                    type="text"
+                                    value={config.tableName}
+                                    onChange={(e) => {
+                                      const newConfigs = [...sheetConfigs]
+                                      newConfigs[idx].tableName = e.target.value
+                                      setSheetConfigs(newConfigs)
+                                    }}
+                                    style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                                  />
+                                </div>
+                              )}
+
                               <div>
                                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#666' }}>Display Name</label>
                                 <input
@@ -1098,7 +1229,8 @@ function DatasetManage() {
                                     newConfigs[idx].displayName = e.target.value
                                     setSheetConfigs(newConfigs)
                                   }}
-                                  style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                                  disabled={!!config.targetTableId}
+                                  style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd', background: config.targetTableId ? '#eee' : 'white' }}
                                 />
                               </div>
                               <div>
