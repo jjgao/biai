@@ -224,7 +224,9 @@ export class DatasetService {
     parsedData: ParsedData,
     primaryKey?: string,
     customMetadata: Record<string, any> = {},
-    relationships: TableRelationship[] = []
+    relationships: TableRelationship[] = [],
+    importMode: 'append' | 'replace' | 'upsert' = 'append',
+    targetTableId?: string
   ): Promise<DatasetTable> {
     // Get the dataset to find its database name
     const dataset = await this.getDataset(datasetId)
@@ -232,15 +234,35 @@ export class DatasetService {
       throw new Error('Dataset not found')
     }
 
-    // In the new simplified model, use the tableName directly (after sanitization)
-    const cleanTableName = tableName.replace(/[^a-z0-9_]/g, '_').toLowerCase()
-    const fullTableName = `${dataset.database_name}.${cleanTableName}`
+    let cleanTableName = tableName.replace(/[^a-z0-9_]/g, '_').toLowerCase()
+    let fullTableName = `${dataset.database_name}.${cleanTableName}`
+    let rowCount = 0
 
-    // Create the ClickHouse table in the dataset's database
-    await this.createDynamicTable(dataset.database_name, cleanTableName, parsedData.columns, primaryKey)
+    if (targetTableId) {
+      // Import into existing table
+      const targetTable = dataset.tables?.find(t => t.table_id === targetTableId)
+      if (!targetTable) {
+        throw new Error(`Target table ${targetTableId} not found`)
+      }
+      
+      cleanTableName = targetTable.table_name
+      fullTableName = targetTable.clickhouse_table_name
+      
+      await this.importIntoExistingTable(
+        dataset.database_name,
+        cleanTableName,
+        parsedData,
+        importMode,
+        targetTable.primary_key || primaryKey
+      )
+    } else {
+      // Create new table
+      // Create the ClickHouse table in the dataset's database
+      await this.createDynamicTable(dataset.database_name, cleanTableName, parsedData.columns, primaryKey)
 
-    // Insert data
-    await this.insertData(dataset.database_name, cleanTableName, parsedData.columns, parsedData.rows)
+      // Insert data
+      await this.insertData(dataset.database_name, cleanTableName, parsedData.columns, parsedData.rows)
+    }
 
     // Update dataset timestamp
     await clickhouseClient.command({
@@ -248,13 +270,32 @@ export class DatasetService {
       query_params: { datasetId }
     })
 
-    // Get row count from the newly created table
+    // Get row count from the table
     const countResult = await clickhouseClient.query({
-      query: `SELECT count() as cnt FROM ${fullTableName}`,
+      query: `SELECT count() as cnt FROM ${this.qualifyTableName(fullTableName)}`,
       format: 'JSONEachRow'
     })
     const countData = await countResult.json<{ cnt: string }>()
-    const rowCount = parseInt(countData[0]?.cnt || '0', 10)
+    rowCount = parseInt(countData[0]?.cnt || '0', 10)
+
+    if (targetTableId) {
+      // Update existing table metadata
+      await clickhouseClient.command({
+        query: `
+          ALTER TABLE biai.dataset_tables 
+          UPDATE row_count = {rowCount:UInt64}
+          WHERE dataset_id = {datasetId:String} AND table_id = {tableId:String}
+        `,
+        query_params: { datasetId, tableId: targetTableId, rowCount }
+      })
+      
+      // Return updated table info (merging with existing)
+      const targetTable = dataset.tables?.find(t => t.table_id === targetTableId)!
+      return {
+        ...targetTable,
+        row_count: rowCount
+      }
+    }
 
     const tableRecord = {
       dataset_id: datasetId,
@@ -352,6 +393,99 @@ export class DatasetService {
       relationships,
       created_at: new Date()
     }
+  }
+
+  private async ensureSchemaCompatibility(
+    databaseName: string,
+    tableName: string,
+    newColumns: ColumnMetadata[]
+  ): Promise<void> {
+    const fullTableName = `${escapeIdentifier(databaseName)}.${escapeIdentifier(tableName)}`
+    
+    const result = await clickhouseClient.query({
+      query: `DESCRIBE TABLE ${fullTableName}`,
+      format: 'JSONEachRow'
+    })
+    const existingCols = await result.json<{name: string, type: string}>()
+    const existingColNames = new Set(existingCols.map(c => c.name))
+
+    const columnsToAdd = newColumns.filter(c => !existingColNames.has(c.name))
+
+    for (const col of columnsToAdd) {
+        let columnType = col.type
+        if (col.isListColumn) {
+          columnType = 'Array(String)'
+        } else {
+          // New columns should generally be nullable as existing rows won't have values
+          columnType = `Nullable(${col.type})`
+        }
+        
+        await clickhouseClient.command({
+            query: `ALTER TABLE ${fullTableName} ADD COLUMN ${escapeIdentifier(col.name)} ${columnType}`
+        })
+    }
+  }
+
+  private async importIntoExistingTable(
+    databaseName: string,
+    tableName: string,
+    parsedData: ParsedData,
+    importMode: 'append' | 'replace' | 'upsert',
+    primaryKey?: string
+  ): Promise<void> {
+    const fullTableName = `${escapeIdentifier(databaseName)}.${escapeIdentifier(tableName)}`
+
+    // 1. Ensure Schema Compatibility
+    await this.ensureSchemaCompatibility(databaseName, tableName, parsedData.columns)
+
+    // 2. Handle Import Modes
+    if (importMode === 'replace') {
+      await clickhouseClient.command({
+        query: `TRUNCATE TABLE ${fullTableName}`
+      })
+    } else if (importMode === 'upsert' && primaryKey) {
+        // Upsert Logic: Delete existing rows matching PKs, then Insert
+        const pkIndex = parsedData.columns.findIndex(c => c.name === primaryKey)
+        
+        if (pkIndex !== -1) {
+             // Create temp table to hold new data for efficient PK matching
+             const tempTable = `${tableName}_temp_${uuidv4().replace(/-/g, '')}`
+             const fullTempTable = `${escapeIdentifier(databaseName)}.${tempTable}`
+             
+             // Create temp table with same structure as main table
+             await clickhouseClient.command({
+                 query: `CREATE TABLE ${fullTempTable} AS ${fullTableName}`
+             })
+             
+             try {
+               // Insert new data into temp table
+               await this.insertData(databaseName, tempTable, parsedData.columns, parsedData.rows)
+               
+               // Delete rows from main table that exist in temp table (by PK)
+               // Note: This mutation is async.
+               await clickhouseClient.command({
+                   query: `ALTER TABLE ${fullTableName} DELETE WHERE ${escapeIdentifier(primaryKey)} IN (SELECT ${escapeIdentifier(primaryKey)} FROM ${fullTempTable})`
+               })
+               
+               // Insert all rows from temp table into main table
+               await clickhouseClient.command({
+                   query: `INSERT INTO ${fullTableName} SELECT * FROM ${fullTempTable}`
+               })
+             } finally {
+               // Clean up temp table
+               await clickhouseClient.command({
+                   query: `DROP TABLE IF EXISTS ${fullTempTable}`
+               })
+             }
+             
+             return // Done
+        } else {
+          console.warn(`Upsert requested but primary key '${primaryKey}' not found in new data columns. Falling back to append.`)
+        }
+    }
+
+    // Default Append (or Replace after Truncate)
+    await this.insertData(databaseName, tableName, parsedData.columns, parsedData.rows)
   }
 
   private async createDynamicTable(databaseName: string, tableName: string, columns: ColumnMetadata[], primaryKey?: string): Promise<void> {
