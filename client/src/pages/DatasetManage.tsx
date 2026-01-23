@@ -407,6 +407,45 @@ function DatasetManage() {
     }
   }
 
+  const removeSheetRelationship = (sheetIdx: number, relIdx: number) => {
+    const newConfigs = [...sheetConfigs]
+    newConfigs[sheetIdx].relationships = newConfigs[sheetIdx].relationships.filter((_, i) => i !== relIdx)
+    setSheetConfigs(newConfigs)
+  }
+
+  const addSheetRelationship = (sheetIdx: number, rel: Relationship) => {
+    const newConfigs = [...sheetConfigs]
+    newConfigs[sheetIdx].relationships.push(rel)
+    setSheetConfigs(newConfigs)
+  }
+
+  const getPotentialTargets = (currentSheetIdx: number) => {
+    const targets = []
+    // Existing tables
+    if (dataset) {
+      targets.push(...dataset.tables.map(t => ({ 
+        id: t.id, 
+        name: t.name, 
+        displayName: t.displayName, 
+        columns: t.columns.map(c => c.name) 
+      })))
+    }
+    // Other selected sheets
+    if (spreadsheetPreview && sheetConfigs) {
+      spreadsheetPreview.sheets.forEach((s, idx) => {
+        if (idx !== currentSheetIdx && sheetConfigs[idx]?.selected) {
+           targets.push({
+             id: sheetConfigs[idx].tableName,
+             name: sheetConfigs[idx].tableName,
+             displayName: `[New] ${sheetConfigs[idx].displayName}`,
+             columns: s.columns || []
+           })
+        }
+      })
+    }
+    return targets
+  }
+
   const handleAddTable = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -1095,16 +1134,97 @@ function DatasetManage() {
                               </div>
                             </div>
 
-                            {config.relationships && config.relationships.length > 0 && (
-                              <div style={{ marginBottom: '1rem' }}>
-                                <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>Detected Relationships:</div>
-                                {config.relationships.map((rel, rIdx) => (
-                                  <div key={rIdx} style={{ fontSize: '0.75rem', padding: '0.25rem', background: '#e3f2fd', borderRadius: '3px', marginBottom: '0.25rem' }}>
-                                    {rel.foreignKey} → {rel.referencedTableDisplayName}.{rel.referencedColumn}
+                            <div style={{ marginBottom: '1rem' }}>
+                              <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>Relationships</label>
+                              
+                              {/* List existing */}
+                              {config.relationships && config.relationships.length > 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.5rem' }}>
+                                  {config.relationships.map((rel, rIdx) => (
+                                    <div key={rIdx} style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', background: '#e3f2fd', borderRadius: '3px', border: '1px solid #2196F3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span>{rel.foreignKey} → {rel.referencedTableDisplayName || rel.referencedTable}.{rel.referencedColumn}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeSheetRelationship(idx, rIdx)}
+                                        style={{ background: 'none', border: 'none', color: '#f44336', cursor: 'pointer', padding: 0, marginLeft: '0.5rem' }}
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Add new */}
+                              <details>
+                                <summary style={{ fontSize: '0.75rem', cursor: 'pointer', color: '#2196F3' }}>+ Add Relationship</summary>
+                                <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#f5f5f5', borderRadius: '4px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end' }}>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.7rem' }}>Col</label>
+                                    <select id={`sheet-fk-col-${idx}`} style={{ width: '100%', fontSize: '0.75rem', padding: '0.25rem' }}>
+                                      <option value="">Select...</option>
+                                      {spreadsheetPreview.sheets[idx].columns?.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
                                   </div>
-                                ))}
-                              </div>
-                            )}
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.7rem' }}>Ref Table</label>
+                                    <select 
+                                      id={`sheet-fk-table-${idx}`} 
+                                      style={{ width: '100%', fontSize: '0.75rem', padding: '0.25rem' }}
+                                      onChange={(e) => {
+                                        const targets = getPotentialTargets(idx)
+                                        const target = targets.find(t => t.id === e.target.value)
+                                        const colSelect = document.getElementById(`sheet-fk-refcol-${idx}`) as HTMLSelectElement
+                                        if (colSelect && target) {
+                                          colSelect.innerHTML = '<option value="">Select...</option>' + 
+                                            target.columns.map(c => `<option value="${c}">${c}</option>`).join('')
+                                        }
+                                      }}
+                                    >
+                                      <option value="">Select...</option>
+                                      {getPotentialTargets(idx).map(t => (
+                                        <option key={t.id} value={t.id}>{t.displayName}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.7rem' }}>Ref Col</label>
+                                    <select id={`sheet-fk-refcol-${idx}`} style={{ width: '100%', fontSize: '0.75rem', padding: '0.25rem' }}>
+                                      <option value="">Select...</option>
+                                    </select>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
+                                    onClick={() => {
+                                      const colSelect = document.getElementById(`sheet-fk-col-${idx}`) as HTMLSelectElement
+                                      const tableSelect = document.getElementById(`sheet-fk-table-${idx}`) as HTMLSelectElement
+                                      const refColSelect = document.getElementById(`sheet-fk-refcol-${idx}`) as HTMLSelectElement
+                                      
+                                      if (colSelect.value && tableSelect.value && refColSelect.value) {
+                                        const targets = getPotentialTargets(idx)
+                                        const target = targets.find(t => t.id === tableSelect.value)
+                                        
+                                        addSheetRelationship(idx, {
+                                          foreignKey: colSelect.value,
+                                          referencedTable: tableSelect.value,
+                                          referencedColumn: refColSelect.value,
+                                          type: 'many-to-one',
+                                          referencedTableDisplayName: target?.displayName || tableSelect.value
+                                        })
+                                        
+                                        // Reset
+                                        colSelect.value = ''
+                                        tableSelect.value = ''
+                                        refColSelect.innerHTML = '<option value="">Select...</option>'
+                                      }
+                                    }}
+                                  >
+                                    Add
+                                  </button>
+                                </div>
+                              </details>
+                            </div>
                             
                             {spreadsheetPreview.sheets[idx].preview && (
                               <details>
