@@ -19,7 +19,78 @@ export interface SpreadsheetPreview {
   sheets: SheetInfo[]
 }
 
-// ... (imports and helpers)
+const COLUMN_FALLBACK_PREFIX = 'column_'
+
+function generateColumnIdentifier(
+  rawName: string | undefined,
+  index: number,
+  usedNames: Set<string>,
+  baseNameCounts: Map<string, number>
+): string {
+  const fallback = `${COLUMN_FALLBACK_PREFIX}${index + 1}`
+  const trimmed = (rawName ?? '').trim()
+
+  let base = trimmed.length > 0 ? trimmed : fallback
+  base = base.toLowerCase().replace(/[^a-z0-9_]/g, '_')
+  base = base.replace(/_+/g, '_').replace(/^_+|_+$/g, '')
+  if (!base) {
+    base = fallback
+  }
+
+  if (!usedNames.has(base)) {
+    usedNames.add(base)
+    baseNameCounts.set(base, 1)
+    return base
+  }
+
+  let counter = (baseNameCounts.get(base) ?? 1) + 1
+  let candidate = `${base}_${counter}`
+  while (usedNames.has(candidate)) {
+    counter += 1
+    candidate = `${base}_${counter}`
+  }
+
+  baseNameCounts.set(base, counter)
+  usedNames.add(candidate)
+  return candidate
+}
+
+function inferType(
+  values: any[],
+  isListColumn: boolean = false
+): 'String' | 'Int32' | 'Float64' | 'DateTime' | 'Boolean' | 'Array(String)' {
+  if (isListColumn) {
+    return 'Array(String)'
+  }
+
+  const nonEmptyValues = values.filter(v => v !== '' && v !== null && v !== undefined)
+
+  if (nonEmptyValues.length === 0) return 'String'
+
+  // Check for boolean
+  const booleanValues = nonEmptyValues.filter(v =>
+    String(v).toLowerCase() === 'true' || String(v).toLowerCase() === 'false' ||
+    String(v).toLowerCase() === 'yes' || String(v).toLowerCase() === 'no' ||
+    v === true || v === false
+  )
+  if (booleanValues.length === nonEmptyValues.length) return 'String'
+
+  // Check for integer
+  const intValues = nonEmptyValues.filter(v => {
+    if (typeof v === 'number') return Number.isInteger(v)
+    return /^-?\d+$/.test(String(v))
+  })
+  if (intValues.length === nonEmptyValues.length) return 'Int32'
+
+  // Check for float
+  const floatValues = nonEmptyValues.filter(v => {
+    if (typeof v === 'number') return true
+    return /^-?\d*\.?\d+$/.test(String(v))
+  })
+  if (floatValues.length === nonEmptyValues.length) return 'Float64'
+
+  return 'String'
+}
 
 export async function getSpreadsheetPreview(filePath: string): Promise<SpreadsheetPreview> {
   try {
