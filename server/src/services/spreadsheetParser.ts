@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx'
+import XLSX from 'xlsx'
 import { ParsedData, ColumnMetadata } from './fileParser.js'
 import { parseListValue } from '../utils/listParser.js'
 
@@ -91,7 +91,6 @@ function inferType(
 
 export async function getSpreadsheetPreview(filePath: string): Promise<SpreadsheetPreview> {
   try {
-    console.log(`Reading spreadsheet from: ${filePath}`)
     const workbook = XLSX.readFile(filePath, { type: 'file', cellDates: true })
     const sheets: SheetInfo[] = []
 
