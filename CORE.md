@@ -439,11 +439,37 @@ How to measure completion
 - [List Values Feature](docs/list-values-feature.md) - Array column support
 - [Testing Checklist](docs/TESTING_CHECKLIST.md) - QA scenarios
 
-## Open GitHub Issues (Key)
+## Viewing Open Issues
 
-- #89 - CI/CD pipeline
-- #92 - DatasetExplorer refactoring (epic)
-- #95 - E2E testing
-- #76 - Temporal filtering epic (7 phases)
-- #105 - Frontend-only mode with DuckDB-WASM
-- #107 - Import to existing tables (Append/Replace/Upsert)
+Use the GitHub CLI to view current issues (avoids stale lists):
+```bash
+gh issue list                          # All open issues
+gh issue list --label "bug"            # Bugs only
+gh issue list --label "enhancement"    # Features only
+gh issue list --label "security"       # Security issues
+```
+
+## Maintaining These Files
+
+### File Hierarchy
+- **CORE.md**: Shared instructions for all agents (project structure, conventions, workflows)
+- **CLAUDE.md / GEMINI.md / AGENT.md**: Agent-specific overrides or additions only
+
+### When to Update CORE.md
+- New project conventions or patterns established
+- Project structure changes (new directories, key files)
+- New common workflows or commands
+- Tech stack changes
+
+### When to Update Agent-Specific Files
+- Agent has unique capabilities relevant to this project
+- Specific tools or workflows that only apply to that agent
+- Temporary overrides or experiments
+
+### Agent Responsibility
+Agents should **proactively flag** when these files appear outdated:
+- If you notice a convention in the code that isn't documented here
+- If documented patterns no longer match the actual codebase
+- If you implement something that establishes a new pattern
+
+Flag by suggesting an update to the user rather than silently ignoring discrepancies.
