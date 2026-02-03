@@ -390,9 +390,16 @@ router.post('/:id/spreadsheets/import', upload.single('file'), async (req, res) 
     }
 
     const importedTables = []
+    const createdTables = new Map<string, string>() // Map<tableName, tableId>
 
     for (const sheetConfig of sheetsConfig) {
-      const { sheetName, tableName, displayName, skipRows = 0, primaryKey, relationships = [], importMode, targetTableId } = sheetConfig
+      let { sheetName, tableName, displayName, skipRows = 0, primaryKey, relationships = [], importMode, targetTableId } = sheetConfig
+
+      // Check if this table was already created in this request
+      if (!targetTableId && createdTables.has(tableName)) {
+        targetTableId = createdTables.get(tableName)
+        importMode = 'append' // Force append for subsequent sheets merging into the same table
+      }
 
       // Parse sheet data
       const parsedData = await parseSpreadsheetSheet(
@@ -420,6 +427,10 @@ router.post('/:id/spreadsheets/import', upload.single('file'), async (req, res) 
         importMode,
         targetTableId
       )
+
+      if (!targetTableId) {
+        createdTables.set(tableName, table.table_id)
+      }
 
       importedTables.push({
         id: table.table_id,

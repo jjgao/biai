@@ -184,5 +184,84 @@ describe('Spreadsheet API Routes', () => {
         'existing_table_2'
       )
     })
+
+    test('should merge multiple sheets into the same new table', async () => {
+      // Mock parsing for two sheets
+      mockParseSpreadsheetSheet
+        .mockResolvedValueOnce({
+          columns: [{ name: 'A', type: 'String', nullable: true, index: 0 }],
+          rows: [['val1']],
+          rowCount: 1
+        } as any)
+        .mockResolvedValueOnce({
+          columns: [{ name: 'A', type: 'String', nullable: true, index: 0 }],
+          rows: [['val2']],
+          rowCount: 1
+        } as any)
+
+      // Mock addTableToDataset response
+      mockAddTableToDataset.mockResolvedValue({
+        table_id: 'merged_table',
+        table_name: 'merged_table',
+        display_name: 'Merged Table',
+        row_count: 1
+      } as any)
+
+      const sheetsConfig = [
+        { 
+          sheetName: 'Sheet1', 
+          tableName: 'merged_table', 
+          displayName: 'Merged Table',
+          importMode: 'append', // First sheet creates
+          targetTableId: undefined 
+        },
+        { 
+          sheetName: 'Sheet2', 
+          tableName: 'merged_table', 
+          displayName: 'Merged Table',
+          importMode: 'append', // Second sheet should append
+          targetTableId: undefined // Intention is to target the same new table
+        }
+      ]
+
+      const response = await request(app)
+        .post('/api/datasets/test-ds/spreadsheets/import')
+        .send({
+          sheetsConfig: JSON.stringify(sheetsConfig)
+        })
+
+      expect(response.status).toBe(200)
+      expect(response.body.success).toBe(true)
+      
+      // Verify first sheet call
+      expect(mockAddTableToDataset).toHaveBeenNthCalledWith(1,
+        'test-ds',
+        'merged_table',
+        'Merged Table',
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        undefined,
+        {},
+        [],
+        'append',
+        undefined 
+      )
+
+      // Verify second sheet call - should append to the table created by Sheet1
+      expect(mockAddTableToDataset).toHaveBeenNthCalledWith(2,
+        'test-ds',
+        'merged_table', 
+        'Merged Table',
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        undefined,
+        {},
+        [],
+        'append',
+        'merged_table' // Verify it uses the ID from the created table
+      )
+    })
   })
 })

@@ -380,7 +380,7 @@ function DatasetManage() {
       primaryKey: s.primaryKey,
       relationships: s.relationships,
       importMode: s.importMode,
-      targetTableId: s.targetTableId
+      targetTableId: s.targetTableId && s.targetTableId.startsWith('PENDING:') ? '' : s.targetTableId
     }))
 
     if (selectedSheets.length === 0) {
@@ -488,7 +488,7 @@ function DatasetManage() {
     }
 
     formData.append('skipRows', skipRows)
-    formData('delimiter', delimiter)
+    formData.append('delimiter', delimiter)
 
     // Use selected primary key from preview or manual input
     const finalPrimaryKey = selectedPrimaryKey || primaryKey
@@ -1168,18 +1168,47 @@ function DatasetManage() {
                                   value={config.targetTableId || ''}
                                   onChange={(e) => {
                                     const newConfigs = [...sheetConfigs]
-                                    newConfigs[idx].targetTableId = e.target.value
-                                    if (e.target.value) {
-                                      // If selecting existing table, default to append
-                                      newConfigs[idx].importMode = 'append'
+                                    const val = e.target.value
+                                    
+                                    if (val.startsWith('PENDING:')) {
+                                        const pendingName = val.substring(8)
+                                        newConfigs[idx].targetTableId = val // Store PENDING:name to keep dropdown selected
+                                        newConfigs[idx].tableName = pendingName
+                                        newConfigs[idx].importMode = 'append' // Merge implies append
+                                        
+                                        // Find the sheet that created this pending table to get its display name
+                                        const sourceSheet = sheetConfigs.find(s => s.tableName === pendingName && !s.targetTableId)
+                                        if (sourceSheet) {
+                                          newConfigs[idx].displayName = sourceSheet.displayName
+                                        }
                                     } else {
-                                      newConfigs[idx].importMode = 'append' // Reset
+                                        newConfigs[idx].targetTableId = val
+                                        if (val) {
+                                          // If selecting existing table, default to append
+                                          newConfigs[idx].importMode = 'append'
+                                          // Update display name to match existing table
+                                          const existingTable = dataset?.tables.find(t => t.id === val)
+                                          if (existingTable) {
+                                            newConfigs[idx].displayName = existingTable.displayName
+                                          }
+                                        } else {
+                                          newConfigs[idx].importMode = 'append' // Reset
+                                          // Reset display name to sheet name if switching back to New Table
+                                          newConfigs[idx].displayName = config.sheetName
+                                        }
                                     }
                                     setSheetConfigs(newConfigs)
                                   }}
                                   style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
                                 >
                                   <option value="">New Table</option>
+                                  {/* Add pending tables from previous selected sheets */}
+                                  {sheetConfigs.map((s, sIdx) => {
+                                      if (sIdx < idx && s.selected && s.tableName && !s.targetTableId) {
+                                          return <option key={`pending-${sIdx}`} value={`PENDING:${s.tableName}`}>{s.tableName} (New)</option>
+                                      }
+                                      return null
+                                  })}
                                   {dataset?.tables.map(t => (
                                     <option key={t.id} value={t.id}>{t.displayName}</option>
                                   ))}
@@ -1242,7 +1271,8 @@ function DatasetManage() {
                                     newConfigs[idx].primaryKey = e.target.value
                                     setSheetConfigs(newConfigs)
                                   }}
-                                  style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                                  disabled={!!config.targetTableId}
+                                  style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd', background: config.targetTableId ? '#eee' : 'white' }}
                                 >
                                   <option value="">None</option>
                                   {spreadsheetPreview.sheets[idx].columns?.map((col: string) => (
@@ -1266,97 +1296,99 @@ function DatasetManage() {
                               </div>
                             </div>
 
-                            <div style={{ marginBottom: '1rem' }}>
-                              <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>Relationships</label>
-                              
-                              {/* List existing */}
-                              {config.relationships && config.relationships.length > 0 && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.5rem' }}>
-                                  {config.relationships.map((rel, rIdx) => (
-                                    <div key={rIdx} style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', background: '#e3f2fd', borderRadius: '3px', border: '1px solid #2196F3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                      <span>{rel.foreignKey} → {rel.referencedTableDisplayName || rel.referencedTable}.{rel.referencedColumn}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => removeSheetRelationship(idx, rIdx)}
-                                        style={{ background: 'none', border: 'none', color: '#f44336', cursor: 'pointer', padding: 0, marginLeft: '0.5rem' }}
-                                      >
-                                        ×
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {/* Add new */}
-                              <details>
-                                <summary style={{ fontSize: '0.75rem', cursor: 'pointer', color: '#2196F3' }}>+ Add Relationship</summary>
-                                <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#f5f5f5', borderRadius: '4px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end' }}>
-                                  <div>
-                                    <label style={{ display: 'block', fontSize: '0.7rem' }}>Col</label>
-                                    <select id={`sheet-fk-col-${idx}`} style={{ width: '100%', fontSize: '0.75rem', padding: '0.25rem' }}>
-                                      <option value="">Select...</option>
-                                      {spreadsheetPreview.sheets[idx].columns?.map(c => <option key={c} value={c}>{c}</option>)}
-                                    </select>
+                            {!config.targetTableId && (
+                              <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>Relationships</label>
+                                
+                                {/* List existing */}
+                                {config.relationships && config.relationships.length > 0 && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.5rem' }}>
+                                    {config.relationships.map((rel, rIdx) => (
+                                      <div key={rIdx} style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', background: '#e3f2fd', borderRadius: '3px', border: '1px solid #2196F3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>{rel.foreignKey} → {rel.referencedTableDisplayName || rel.referencedTable}.{rel.referencedColumn}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => removeSheetRelationship(idx, rIdx)}
+                                          style={{ background: 'none', border: 'none', color: '#f44336', cursor: 'pointer', padding: 0, marginLeft: '0.5rem' }}
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                    ))}
                                   </div>
-                                  <div>
-                                    <label style={{ display: 'block', fontSize: '0.7rem' }}>Ref Table</label>
-                                    <select 
-                                      id={`sheet-fk-table-${idx}`} 
-                                      style={{ width: '100%', fontSize: '0.75rem', padding: '0.25rem' }}
-                                      onChange={(e) => {
-                                        const targets = getPotentialTargets(idx)
-                                        const target = targets.find(t => t.id === e.target.value)
-                                        const colSelect = document.getElementById(`sheet-fk-refcol-${idx}`) as HTMLSelectElement
-                                        if (colSelect && target) {
-                                          colSelect.innerHTML = '<option value="">Select...</option>' + 
-                                            target.columns.map(c => `<option value="${c}">${c}</option>`).join('')
+                                )}
+
+                                {/* Add new */}
+                                <details>
+                                  <summary style={{ fontSize: '0.75rem', cursor: 'pointer', color: '#2196F3' }}>+ Add Relationship</summary>
+                                  <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#f5f5f5', borderRadius: '4px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end' }}>
+                                    <div>
+                                      <label style={{ display: 'block', fontSize: '0.7rem' }}>Col</label>
+                                      <select id={`sheet-fk-col-${idx}`} style={{ width: '100%', fontSize: '0.75rem', padding: '0.25rem' }}>
+                                        <option value="">Select...</option>
+                                        {spreadsheetPreview.sheets[idx].columns?.map(c => <option key={c} value={c}>{c}</option>)}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label style={{ display: 'block', fontSize: '0.7rem' }}>Ref Table</label>
+                                      <select 
+                                        id={`sheet-fk-table-${idx}`} 
+                                        style={{ width: '100%', fontSize: '0.75rem', padding: '0.25rem' }}
+                                        onChange={(e) => {
+                                          const targets = getPotentialTargets(idx)
+                                          const target = targets.find(t => t.id === e.target.value)
+                                          const colSelect = document.getElementById(`sheet-fk-refcol-${idx}`) as HTMLSelectElement
+                                          if (colSelect && target) {
+                                            colSelect.innerHTML = '<option value="">Select...</option>' + 
+                                              target.columns.map(c => `<option value="${c}">${c}</option>`).join('')
+                                          }
+                                        }}
+                                      >
+                                        <option value="">Select...</option>
+                                        {getPotentialTargets(idx).map(t => (
+                                          <option key={t.id} value={t.id}>{t.displayName}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label style={{ display: 'block', fontSize: '0.7rem' }}>Ref Col</label>
+                                      <select id={`sheet-fk-refcol-${idx}`} style={{ width: '100%', fontSize: '0.75rem', padding: '0.25rem' }}>
+                                        <option value="">Select...</option>
+                                      </select>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
+                                      onClick={() => {
+                                        const colSelect = document.getElementById(`sheet-fk-col-${idx}`) as HTMLSelectElement
+                                        const tableSelect = document.getElementById(`sheet-fk-table-${idx}`) as HTMLSelectElement
+                                        const refColSelect = document.getElementById(`sheet-fk-refcol-${idx}`) as HTMLSelectElement
+                                        
+                                        if (colSelect.value && tableSelect.value && refColSelect.value) {
+                                          const targets = getPotentialTargets(idx)
+                                          const target = targets.find(t => t.id === tableSelect.value)
+                                          
+                                          addSheetRelationship(idx, {
+                                            foreignKey: colSelect.value,
+                                            referencedTable: tableSelect.value,
+                                            referencedColumn: refColSelect.value,
+                                            type: 'many-to-one',
+                                            referencedTableDisplayName: target?.displayName || tableSelect.value
+                                          })
+                                          
+                                          // Reset
+                                          colSelect.value = ''
+                                          tableSelect.value = ''
+                                          refColSelect.innerHTML = '<option value="">Select...</option>'
                                         }
                                       }}
                                     >
-                                      <option value="">Select...</option>
-                                      {getPotentialTargets(idx).map(t => (
-                                        <option key={t.id} value={t.id}>{t.displayName}</option>
-                                      ))}
-                                    </select>
+                                      Add
+                                    </button>
                                   </div>
-                                  <div>
-                                    <label style={{ display: 'block', fontSize: '0.7rem' }}>Ref Col</label>
-                                    <select id={`sheet-fk-refcol-${idx}`} style={{ width: '100%', fontSize: '0.75rem', padding: '0.25rem' }}>
-                                      <option value="">Select...</option>
-                                    </select>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
-                                    onClick={() => {
-                                      const colSelect = document.getElementById(`sheet-fk-col-${idx}`) as HTMLSelectElement
-                                      const tableSelect = document.getElementById(`sheet-fk-table-${idx}`) as HTMLSelectElement
-                                      const refColSelect = document.getElementById(`sheet-fk-refcol-${idx}`) as HTMLSelectElement
-                                      
-                                      if (colSelect.value && tableSelect.value && refColSelect.value) {
-                                        const targets = getPotentialTargets(idx)
-                                        const target = targets.find(t => t.id === tableSelect.value)
-                                        
-                                        addSheetRelationship(idx, {
-                                          foreignKey: colSelect.value,
-                                          referencedTable: tableSelect.value,
-                                          referencedColumn: refColSelect.value,
-                                          type: 'many-to-one',
-                                          referencedTableDisplayName: target?.displayName || tableSelect.value
-                                        })
-                                        
-                                        // Reset
-                                        colSelect.value = ''
-                                        tableSelect.value = ''
-                                        refColSelect.innerHTML = '<option value="">Select...</option>'
-                                      }
-                                    }}
-                                  >
-                                    Add
-                                  </button>
-                                </div>
-                              </details>
-                            </div>
+                                </details>
+                              </div>
+                            )}
                             
                             {spreadsheetPreview.sheets[idx].preview && (
                               <details>
