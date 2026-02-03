@@ -249,6 +249,7 @@ export class DatasetService {
       fullTableName = targetTable.clickhouse_table_name
       
       await this.importIntoExistingTable(
+        datasetId,
         dataset.database_name,
         cleanTableName,
         parsedData,
@@ -396,6 +397,7 @@ export class DatasetService {
   }
 
   private async ensureSchemaCompatibility(
+    datasetId: string,
     databaseName: string,
     tableName: string,
     newColumns: ColumnMetadata[]
@@ -411,6 +413,8 @@ export class DatasetService {
 
     const columnsToAdd = newColumns.filter(c => !existingColNames.has(c.name))
 
+    const columnValues = []
+
     for (const col of columnsToAdd) {
         let columnType = col.type
         if (col.isListColumn) {
@@ -423,10 +427,51 @@ export class DatasetService {
         await clickhouseClient.command({
             query: `ALTER TABLE ${fullTableName} ADD COLUMN ${escapeIdentifier(col.name)} ${columnType}`
         })
+
+        // Analyze and register new column metadata
+        const analysis = await analyzeColumn(
+          fullTableName,
+          col.name,
+          col.type
+        )
+
+        const finalPriority = col.userPriority !== undefined ? col.userPriority : analysis.display_priority
+
+        columnValues.push({
+          dataset_id: datasetId,
+          table_id: tableName,
+          column_name: col.name,
+          column_type: col.type,
+          column_index: existingCols.length + columnValues.length, // Append to end
+          is_nullable: true, // Added columns are nullable
+          display_name: col.displayName || '',
+          description: col.description || '',
+          user_data_type: col.userDataType || '',
+          user_priority: col.userPriority !== undefined ? col.userPriority : null,
+          display_type: analysis.display_type,
+          unique_value_count: analysis.unique_value_count,
+          null_count: analysis.null_count,
+          min_value: analysis.min_value,
+          max_value: analysis.max_value,
+          suggested_chart: analysis.suggested_chart,
+          display_priority: finalPriority,
+          is_hidden: analysis.is_hidden,
+          is_list_column: col.isListColumn || false,
+          list_syntax: col.listSyntax || ''
+        })
+    }
+
+    if (columnValues.length > 0) {
+      await clickhouseClient.insert({
+        table: 'biai.dataset_columns',
+        values: columnValues,
+        format: 'JSONEachRow'
+      })
     }
   }
 
   private async importIntoExistingTable(
+    datasetId: string,
     databaseName: string,
     tableName: string,
     parsedData: ParsedData,
@@ -436,7 +481,7 @@ export class DatasetService {
     const fullTableName = `${escapeIdentifier(databaseName)}.${escapeIdentifier(tableName)}`
 
     // 1. Ensure Schema Compatibility
-    await this.ensureSchemaCompatibility(databaseName, tableName, parsedData.columns)
+    await this.ensureSchemaCompatibility(datasetId, databaseName, tableName, parsedData.columns)
 
     // 2. Handle Import Modes
     if (importMode === 'replace') {
@@ -464,7 +509,7 @@ export class DatasetService {
                // Delete rows from main table that exist in temp table (by PK)
                // Note: This mutation is async.
                await clickhouseClient.command({
-                   query: `ALTER TABLE ${fullTableName} DELETE WHERE ${escapeIdentifier(primaryKey)} IN (SELECT ${escapeIdentifier(primaryKey)} FROM ${fullTempTable})`
+                   query: `ALTER TABLE ${fullTableName} DELETE WHERE ${escapeIdentifier(primaryKey)} IN (SELECT ${escapeIdentifier(primaryKey)} FROM ${fullTempTable}) SETTINGS mutations_sync = 1`
                })
                
                // Insert all rows from temp table into main table
