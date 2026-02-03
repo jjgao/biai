@@ -114,6 +114,7 @@ npm run build
 - Vitest for unit tests
 - Test files: `__tests__/*.test.ts` or `*.test.ts`
 - Test utilities in `server/src/__tests__/utils/`
+- **API route tests**: When adding or modifying API endpoints, add route-level tests using `supertest` + `express` (see `server/src/routes/__tests__/` for examples). These test that HTTP requests are correctly parsed and passed to services.
 
 ## Common Patterns
 
