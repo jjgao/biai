@@ -236,4 +236,31 @@ describe('DatasetService - Import into Existing Table', () => {
         query: expect.stringContaining('ADD COLUMN `new_col` Nullable(String)')
     }))
   })
+
+  test('should use mutations_sync = 1 for upsert delete', async () => {
+    const parsedData = {
+        columns: [{ name: 'id', type: 'String' }],
+        rows: [['u1']],
+        rowCount: 1
+    }
+
+    await datasetService.addTableToDataset(
+      datasetId,
+      'ignored',
+      'ignored',
+      'file.csv',
+      'text/csv',
+      parsedData as any,
+      undefined,
+      {},
+      [],
+      'upsert',
+      'existing_table'
+    )
+
+    // Check for the DELETE mutation with synchronous settings
+    expect(commandMock).toHaveBeenCalledWith(expect.objectContaining({
+        query: expect.stringMatching(/ALTER TABLE .* DELETE WHERE .* SETTINGS mutations_sync = 1/)
+    }))
+  })
 })
