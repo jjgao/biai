@@ -488,7 +488,7 @@ function DatasetManage() {
     }
 
     formData.append('skipRows', skipRows)
-    formData('delimiter', delimiter)
+    formData.append('delimiter', delimiter)
 
     // Use selected primary key from preview or manual input
     const finalPrimaryKey = selectedPrimaryKey || primaryKey
@@ -1168,18 +1168,34 @@ function DatasetManage() {
                                   value={config.targetTableId || ''}
                                   onChange={(e) => {
                                     const newConfigs = [...sheetConfigs]
-                                    newConfigs[idx].targetTableId = e.target.value
-                                    if (e.target.value) {
-                                      // If selecting existing table, default to append
-                                      newConfigs[idx].importMode = 'append'
+                                    const val = e.target.value
+                                    
+                                    if (val.startsWith('PENDING:')) {
+                                        const pendingName = val.substring(8)
+                                        newConfigs[idx].targetTableId = '' // It's still a "new" table technically (no ID yet)
+                                        newConfigs[idx].tableName = pendingName
+                                        newConfigs[idx].importMode = 'append' // Merge implies append
                                     } else {
-                                      newConfigs[idx].importMode = 'append' // Reset
+                                        newConfigs[idx].targetTableId = val
+                                        if (val) {
+                                          // If selecting existing table, default to append
+                                          newConfigs[idx].importMode = 'append'
+                                        } else {
+                                          newConfigs[idx].importMode = 'append' // Reset
+                                        }
                                     }
                                     setSheetConfigs(newConfigs)
                                   }}
                                   style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
                                 >
                                   <option value="">New Table</option>
+                                  {/* Add pending tables from previous selected sheets */}
+                                  {sheetConfigs.map((s, sIdx) => {
+                                      if (sIdx < idx && s.selected && s.tableName) {
+                                          return <option key={`pending-${sIdx}`} value={`PENDING:${s.tableName}`}>{s.tableName} (New)</option>
+                                      }
+                                      return null
+                                  })}
                                   {dataset?.tables.map(t => (
                                     <option key={t.id} value={t.id}>{t.displayName}</option>
                                   ))}
