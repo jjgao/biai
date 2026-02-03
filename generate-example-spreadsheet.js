@@ -66,10 +66,34 @@ function generateExampleSpreadsheet(outputDir) {
     const ws3 = XLSX.utils.aoa_to_sheet(treatmentsData)
     XLSX.utils.book_append_sheet(wb, ws3, 'Treatments')
 
-    // Sheet 4: Empty Sheet (to test error handling)
+    // Sheet 4: Patients_Append (for testing append mode)
+    console.log('   Creating sheet: Patients_Append')
+    const patientsAppendData = [
+      ['patient_id', 'age', 'gender', 'diagnosis_date', 'status'],
+      ['P006', 60, 'Male', '2023-06-01', 'Alive'],
+      ['P007', 41, 'Female', '2023-06-15', 'Alive']
+    ]
+    const ws4 = XLSX.utils.aoa_to_sheet(patientsAppendData)
+    XLSX.utils.book_append_sheet(wb, ws4, 'Patients_Append')
+
+    // Sheet 5: Patients_Upsert (for testing upsert mode)
+    // P001: Existing, modified (Status: Alive -> In Remission)
+    // P002: Existing, unmodified
+    // P008: New record
+    console.log('   Creating sheet: Patients_Upsert')
+    const patientsUpsertData = [
+      ['patient_id', 'age', 'gender', 'diagnosis_date', 'status'],
+      ['P001', 45, 'Male', '2023-01-15', 'In Remission'],
+      ['P002', 32, 'Female', '2023-02-20', 'Deceased'],
+      ['P008', 22, 'Male', '2023-07-20', 'Alive']
+    ]
+    const ws5 = XLSX.utils.aoa_to_sheet(patientsUpsertData)
+    XLSX.utils.book_append_sheet(wb, ws5, 'Patients_Upsert')
+
+    // Sheet 6: Empty Sheet (to test error handling)
     console.log('   Creating sheet: Empty_Sheet')
-    const ws4 = XLSX.utils.aoa_to_sheet([])
-    XLSX.utils.book_append_sheet(wb, ws4, 'Empty_Sheet')
+    const ws6 = XLSX.utils.aoa_to_sheet([])
+    XLSX.utils.book_append_sheet(wb, ws6, 'Empty_Sheet')
 
     const outputPath = path.join(outputDir, 'clinical_trial_data.xlsx')
     XLSX.writeFile(wb, outputPath)

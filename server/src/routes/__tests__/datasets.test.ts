@@ -2,10 +2,48 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import request from 'supertest'
 import express from 'express'
 
+const { mockMulterBody } = vi.hoisted(() => ({
+  mockMulterBody: { current: {} }
+}))
+
+// Mock fileParser
+vi.mock('../../services/fileParser.js', () => ({
+  parseCSVFile: vi.fn().mockResolvedValue({
+    columns: [{ name: 'col1', type: 'String' }],
+    rows: [['val1']],
+    rowCount: 1
+  }),
+  detectSkipRows: vi.fn(),
+  detectDelimiter: vi.fn()
+}))
+
+// Mock fs/promises
+vi.mock('fs/promises', () => ({
+  unlink: vi.fn().mockResolvedValue(undefined)
+}))
+
+// Mock multer
+vi.mock('multer', () => {
+  const multer = () => ({
+    single: () => (req, res, next) => {
+      req.file = {
+        path: 'mock/path/test.csv',
+        originalname: 'test.csv',
+        mimetype: 'text/csv'
+      }
+      req.body = { ...req.body, ...mockMulterBody.current }
+      next()
+    }
+  })
+  multer.diskStorage = vi.fn()
+  return { default: multer }
+})
+
 // Mock the services
 vi.mock('../../services/datasetService.js', () => ({
   default: {
     createDataset: vi.fn(),
+    addTableToDataset: vi.fn(),
     listDatasets: vi.fn(),
     getDataset: vi.fn(),
     connectDatabase: vi.fn(),
@@ -215,6 +253,197 @@ describe('Datasets API Routes', () => {
         protocol: 'https',
         username: 'readonly'
       })
+    })
+  })
+
+  describe('POST /api/datasets/:id/tables', () => {
+    // Mock for addTableToDataset is required for these tests
+    const mockAddTableToDataset = vi.mocked(datasetService.addTableToDataset)
+
+    beforeEach(() => {
+      mockAddTableToDataset.mockReset()
+      mockMulterBody.current = {}
+    })
+
+    test('should pass importMode=append and targetTableId to service', async () => {
+      mockMulterBody.current = {
+        tableName: 'existing_table',
+        importMode: 'append',
+        targetTableId: 'existing_table_id'
+      }
+
+      mockAddTableToDataset.mockResolvedValue({
+        table_id: 'existing_table',
+        table_name: 'existing_table',
+        display_name: 'Existing Table',
+        original_filename: 'test.csv',
+        file_type: 'text/csv',
+        row_count: 10,
+        clickhouse_table_name: 'db.existing_table',
+        schema_json: '[]',
+        created_at: new Date()
+      })
+
+      const response = await request(app)
+        .post('/api/datasets/test-ds/tables')
+        .field('tableName', 'existing_table')
+        .field('importMode', 'append')
+        .field('targetTableId', 'existing_table_id')
+        .attach('file', Buffer.from('col1\nval1'), 'test.csv')
+
+      expect(response.status).toBe(200)
+      expect(mockAddTableToDataset).toHaveBeenCalledWith(
+        'test-ds',
+        'existing_table',
+        'existing_table',
+        'test.csv',
+        'text/csv',
+        expect.anything(),
+        undefined,
+        {},
+        [],
+        'append',
+        'existing_table_id'
+      )
+    })
+
+    test('should pass importMode=replace and targetTableId to service', async () => {
+      mockMulterBody.current = {
+        tableName: 'existing_table',
+        importMode: 'replace',
+        targetTableId: 'existing_table_id'
+      }
+
+      mockAddTableToDataset.mockResolvedValue({
+        table_id: 'existing_table',
+        table_name: 'existing_table',
+        display_name: 'Existing Table',
+        original_filename: 'test.csv',
+        file_type: 'text/csv',
+        row_count: 10,
+        clickhouse_table_name: 'db.existing_table',
+        schema_json: '[]',
+        created_at: new Date()
+      })
+
+      const response = await request(app)
+        .post('/api/datasets/test-ds/tables')
+        .field('tableName', 'existing_table')
+        .field('importMode', 'replace')
+        .field('targetTableId', 'existing_table_id')
+        .attach('file', Buffer.from('col1\nval1'), 'test.csv')
+
+      expect(response.status).toBe(200)
+      expect(mockAddTableToDataset).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        undefined,
+        {},
+        [],
+        'replace',
+        'existing_table_id'
+      )
+    })
+
+    test('should pass importMode=upsert and targetTableId to service', async () => {
+      mockMulterBody.current = {
+        tableName: 'existing_table',
+        importMode: 'upsert',
+        targetTableId: 'existing_table_id'
+      }
+
+      mockAddTableToDataset.mockResolvedValue({
+        table_id: 'existing_table',
+        table_name: 'existing_table',
+        display_name: 'Existing Table',
+        original_filename: 'test.csv',
+        file_type: 'text/csv',
+        row_count: 10,
+        clickhouse_table_name: 'db.existing_table',
+        schema_json: '[]',
+        created_at: new Date()
+      })
+
+      const response = await request(app)
+        .post('/api/datasets/test-ds/tables')
+        .field('tableName', 'existing_table')
+        .field('importMode', 'upsert')
+        .field('targetTableId', 'existing_table_id')
+        .attach('file', Buffer.from('col1\nval1'), 'test.csv')
+
+      expect(response.status).toBe(200)
+      expect(mockAddTableToDataset).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        undefined,
+        {},
+        [],
+        'upsert',
+        'existing_table_id'
+      )
+    })
+
+    test('should default to importMode=append if missing', async () => {
+      mockMulterBody.current = {
+        tableName: 'new_table'
+      }
+
+      mockAddTableToDataset.mockResolvedValue({
+        table_id: 'new_table',
+        table_name: 'new_table',
+        display_name: 'New Table',
+        original_filename: 'test.csv',
+        file_type: 'text/csv',
+        row_count: 10,
+        clickhouse_table_name: 'db.new_table',
+        schema_json: '[]',
+        created_at: new Date()
+      })
+
+      const response = await request(app)
+        .post('/api/datasets/test-ds/tables')
+        .field('tableName', 'new_table')
+        .attach('file', Buffer.from('col1\nval1'), 'test.csv')
+
+      expect(response.status).toBe(200)
+      expect(mockAddTableToDataset).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        undefined,
+        {},
+        [],
+        'append',
+        undefined
+      )
+    })
+
+    test('should return 400 for invalid importMode', async () => {
+      mockMulterBody.current = {
+        tableName: 'table',
+        importMode: 'invalid_mode'
+      }
+
+      const response = await request(app)
+        .post('/api/datasets/test-ds/tables')
+        .field('tableName', 'table')
+        .field('importMode', 'invalid_mode')
+        .attach('file', Buffer.from('col1\nval1'), 'test.csv')
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toContain('Invalid importMode')
+      expect(mockAddTableToDataset).not.toHaveBeenCalled()
     })
   })
 

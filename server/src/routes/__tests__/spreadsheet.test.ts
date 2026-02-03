@@ -113,5 +113,76 @@ describe('Spreadsheet API Routes', () => {
       expect(mockParseSpreadsheetSheet).toHaveBeenCalled()
       expect(mockAddTableToDataset).toHaveBeenCalled()
     })
+
+    test('should pass importMode and targetTableId for each sheet', async () => {
+      const mockParsedData = {
+        columns: [{ name: 'A', type: 'String', nullable: true, index: 0 }],
+        rows: [['val']],
+        rowCount: 1
+      }
+      mockParseSpreadsheetSheet.mockResolvedValue(mockParsedData as any)
+      mockAddTableToDataset.mockResolvedValue({
+        table_id: 'sheet1',
+        table_name: 'sheet1',
+        display_name: 'Sheet 1',
+        row_count: 1
+      } as any)
+
+      const sheetsConfig = [
+        { 
+          sheetName: 'Sheet1', 
+          tableName: 'sheet1', 
+          displayName: 'Sheet 1',
+          importMode: 'replace',
+          targetTableId: 'existing_table_1'
+        },
+        { 
+          sheetName: 'Sheet2', 
+          tableName: 'sheet2', 
+          displayName: 'Sheet 2',
+          importMode: 'append',
+          targetTableId: 'existing_table_2'
+        }
+      ]
+
+      const response = await request(app)
+        .post('/api/datasets/test-ds/spreadsheets/import')
+        .send({
+          sheetsConfig: JSON.stringify(sheetsConfig)
+        })
+
+      expect(response.status).toBe(200)
+      expect(response.body.success).toBe(true)
+      
+      // Verify first sheet call
+      expect(mockAddTableToDataset).toHaveBeenCalledWith(
+        'test-ds',
+        'sheet1',
+        'Sheet 1',
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        undefined,
+        {},
+        [],
+        'replace',
+        'existing_table_1'
+      )
+
+      // Verify second sheet call
+      expect(mockAddTableToDataset).toHaveBeenCalledWith(
+        'test-ds',
+        'sheet2',
+        'Sheet 2',
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        undefined,
+        {},
+        [],
+        'append',
+        'existing_table_2'
+      )
+    })
   })
 })

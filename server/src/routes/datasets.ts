@@ -526,6 +526,13 @@ router.post('/:id/tables', upload.single('file'), async (req, res) => {
       // Ignore parse errors, just don't use list columns
     }
 
+    // Validate importMode
+    const validImportModes = ['append', 'replace', 'upsert']
+    if (importMode && !validImportModes.includes(importMode as string)) {
+      await unlink(tempFilePath)
+      return res.status(400).json({ error: 'Invalid importMode. Must be append, replace, or upsert' })
+    }
+
     const parsedData = await parseCSVFile(
       filePath,
       parseInt(skipRows, 10),
