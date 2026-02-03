@@ -1175,13 +1175,26 @@ function DatasetManage() {
                                         newConfigs[idx].targetTableId = val // Store PENDING:name to keep dropdown selected
                                         newConfigs[idx].tableName = pendingName
                                         newConfigs[idx].importMode = 'append' // Merge implies append
+                                        
+                                        // Find the sheet that created this pending table to get its display name
+                                        const sourceSheet = sheetConfigs.find(s => s.tableName === pendingName && !s.targetTableId)
+                                        if (sourceSheet) {
+                                          newConfigs[idx].displayName = sourceSheet.displayName
+                                        }
                                     } else {
                                         newConfigs[idx].targetTableId = val
                                         if (val) {
                                           // If selecting existing table, default to append
                                           newConfigs[idx].importMode = 'append'
+                                          // Update display name to match existing table
+                                          const existingTable = dataset?.tables.find(t => t.id === val)
+                                          if (existingTable) {
+                                            newConfigs[idx].displayName = existingTable.displayName
+                                          }
                                         } else {
                                           newConfigs[idx].importMode = 'append' // Reset
+                                          // Reset display name to sheet name if switching back to New Table
+                                          newConfigs[idx].displayName = config.sheetName
                                         }
                                     }
                                     setSheetConfigs(newConfigs)
