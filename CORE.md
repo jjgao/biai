@@ -289,6 +289,12 @@ gh pr ready
 gh pr merge --squash
 ```
 
+### Important Rules for AI Agents
+
+- **NEVER merge a pull request unless the user explicitly asks you to.** Creating a PR and reviewing a PR are fine, but merging requires explicit user instruction.
+- **NEVER force push** to main/master.
+- **NEVER delete branches** without being asked.
+
 ### Exception Cases
 
 - **Trivial fixes** (typos, formatting): Can skip issue creation, but still use a branch and PR
