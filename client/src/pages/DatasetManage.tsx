@@ -380,7 +380,7 @@ function DatasetManage() {
       primaryKey: s.primaryKey,
       relationships: s.relationships,
       importMode: s.importMode,
-      targetTableId: s.targetTableId
+      targetTableId: s.targetTableId && s.targetTableId.startsWith('PENDING:') ? '' : s.targetTableId
     }))
 
     if (selectedSheets.length === 0) {
@@ -1258,7 +1258,8 @@ function DatasetManage() {
                                     newConfigs[idx].primaryKey = e.target.value
                                     setSheetConfigs(newConfigs)
                                   }}
-                                  style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                                  disabled={!!config.targetTableId}
+                                  style={{ width: '100%', padding: '0.25rem 0.5rem', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #ddd', background: config.targetTableId ? '#eee' : 'white' }}
                                 >
                                   <option value="">None</option>
                                   {spreadsheetPreview.sheets[idx].columns?.map((col: string) => (
