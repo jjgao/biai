@@ -1172,7 +1172,7 @@ function DatasetManage() {
                                     
                                     if (val.startsWith('PENDING:')) {
                                         const pendingName = val.substring(8)
-                                        newConfigs[idx].targetTableId = '' // It's still a "new" table technically (no ID yet)
+                                        newConfigs[idx].targetTableId = val // Store PENDING:name to keep dropdown selected
                                         newConfigs[idx].tableName = pendingName
                                         newConfigs[idx].importMode = 'append' // Merge implies append
                                     } else {
