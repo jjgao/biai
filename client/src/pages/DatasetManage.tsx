@@ -1204,7 +1204,7 @@ function DatasetManage() {
                                   <option value="">New Table</option>
                                   {/* Add pending tables from previous selected sheets */}
                                   {sheetConfigs.map((s, sIdx) => {
-                                      if (sIdx < idx && s.selected && s.tableName) {
+                                      if (sIdx < idx && s.selected && s.tableName && !s.targetTableId) {
                                           return <option key={`pending-${sIdx}`} value={`PENDING:${s.tableName}`}>{s.tableName} (New)</option>
                                       }
                                       return null
