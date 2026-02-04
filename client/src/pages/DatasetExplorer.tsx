@@ -29,8 +29,6 @@ const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 const CACHE_MAX_ENTRIES_PER_TABLE = 5
 const MAX_ANCESTOR_DEPTH = 4
 
-
-
 const cloneFilterNode = (filter: Filter): Filter => {
   const cloned: Filter = {
     ...filter,
@@ -1874,10 +1872,6 @@ function DatasetExplorer() {
     ensureAggregationForCacheKey(tableName, value)
   }
 
-
-
-
-
   /**
    * Determine which table a filter applies to for cache lookups / backend requests.
    *
@@ -1933,8 +1927,6 @@ function DatasetExplorer() {
 
     return result
   }
-
-
 
   const hasColumnFilter = (column: string, countKey?: string): boolean => {
     const resolvedKey = countKey ?? ROW_COUNT_KEY
@@ -4390,7 +4382,6 @@ function DatasetExplorer() {
     )
   }
 
-
   if (loading) return <p>Loading explorer...</p>
   if (error) return <div role="alert" style={{ padding: '2rem', color: 'red' }}>Error: {error}</div>
   if (!dataset) return <p>Dataset not found</p>
@@ -4575,7 +4566,6 @@ function DatasetExplorer() {
           </div>
         </div>
       )}
-
 
       {/* Active Filters */}
       {filters.length > 0 && (
