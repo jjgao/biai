@@ -17,6 +17,16 @@ export interface Filter {
   countByKey?: string
 }
 
+export const ROW_COUNT_KEY = 'rows'
+
+/**
+ * Unwrap a filter potentially wrapped in a NOT condition.
+ */
+export const unwrapNot = (filter?: Filter | null): Filter | undefined => {
+  if (!filter) return undefined
+  return filter.not ?? filter
+}
+
 export interface TableRelationship {
   foreign_key: string
   referenced_table: string
@@ -198,4 +208,24 @@ export const getAllEffectiveFilters = (
   }
 
   return result
+}
+
+/**
+ * Generate a unique key for a range filter on a column with a specific count context.
+ */
+export const rangeKey = (tableName: string, columnName: string, countKey?: string) =>
+  `${tableName}.${columnName}:${countKey ?? 'rows'}`
+
+/**
+ * Compare two numeric ranges for equality.
+ */
+export const rangesEqual = (a: { start: number; end: number }, b: { start: number; end: number }) =>
+  Math.abs(a.start - b.start) < 1e-9 && Math.abs(a.end - b.end) < 1e-9
+
+/**
+ * Get the effective count key for a filter (handling NOT wrappers).
+ */
+export const getFilterCountKey = (filter: Filter): string => {
+  const actual = unwrapNot(filter)
+  return actual?.countByKey ?? filter.countByKey ?? ROW_COUNT_KEY
 }

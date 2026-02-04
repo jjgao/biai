@@ -5,11 +5,22 @@ import type { PlotMouseEvent, PlotSelectionEvent } from 'plotly.js'
 import SafeHtml from '../components/SafeHtml'
 import api from '../services/api'
 import type { MetricPathSegment } from '../types'
-import { findRelationshipPath, type Filter } from '../utils/filterHelpers'
+import {
+  findRelationshipPath,
+  type Filter,
+  ROW_COUNT_KEY,
+  unwrapNot,
+  rangeKey,
+  rangesEqual,
+  getFilterCountKey,
+  getFilterColumn,
+  filterContainsColumn,
+} from '../utils/filterHelpers'
+import { encodeState, decodeState } from '../utils/urlHelpers'
 import { getStateCode, normalizeStateName } from '../data/us-states'
 // Small categorical sets render better as pie charts; beyond this use bars.
 const MAX_PIE_CATEGORIES = 8
-const ROW_COUNT_KEY = 'rows'
+
 const CHART_LABEL_STORAGE_PREFIX = 'chartLabels_'
 const CHART_OVERRIDE_STORAGE_PREFIX = 'chartOverrides_'
 const TABLE_SCOPE_KEY = 'table'
@@ -17,11 +28,6 @@ const DASHBOARD_SCOPE_KEY = 'dashboard'
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 const CACHE_MAX_ENTRIES_PER_TABLE = 5
 const MAX_ANCESTOR_DEPTH = 4
-
-export const unwrapNot = (filter?: Filter | null): Filter | undefined => {
-  if (!filter) return undefined
-  return filter.not ?? filter
-}
 
 const cloneFilterNode = (filter: Filter): Filter => {
   const cloned: Filter = {
@@ -297,23 +303,11 @@ function DatasetExplorer() {
 
   // Helper functions for URL persistence
   const serializeFilters = (filters: Filter[]): string => {
-    try {
-      const json = JSON.stringify(filters)
-      return btoa(encodeURIComponent(json))
-    } catch (error) {
-      console.error('Failed to serialize filters:', error)
-      return ''
-    }
+    return encodeState(filters)
   }
 
   const deserializeFilters = (encoded: string): Filter[] | null => {
-    try {
-      const json = decodeURIComponent(atob(encoded))
-      return JSON.parse(json)
-    } catch (error) {
-      console.error('Failed to deserialize filters:', error)
-      return null
-    }
+    return decodeState<Filter[]>(encoded)
   }
 
   const saveFiltersToLocalStorage = (filters: Filter[]) => {
@@ -341,22 +335,11 @@ function DatasetExplorer() {
   const currentFiltersKey = useMemo(() => buildFiltersKey(filters), [filters])
 
   const serializeCountBySelections = (selections: Record<string, CountBySelection>): string => {
-    try {
-      return btoa(encodeURIComponent(JSON.stringify(selections)))
-    } catch (error) {
-      console.error('Failed to serialize countBy selections:', error)
-      return ''
-    }
+    return encodeState(selections)
   }
 
   const deserializeCountBySelections = (encoded: string): Record<string, CountBySelection> | null => {
-    try {
-      const json = decodeURIComponent(atob(encoded))
-      return JSON.parse(json)
-    } catch (error) {
-      console.error('Failed to deserialize countBy selections:', error)
-      return null
-    }
+    return decodeState<Record<string, CountBySelection>>(encoded)
   }
 
   const saveCountByToLocalStorage = (selections: Record<string, CountBySelection>) => {
@@ -1889,30 +1872,6 @@ function DatasetExplorer() {
     ensureAggregationForCacheKey(tableName, value)
   }
 
-
-
-  const rangeKey = (tableName: string, columnName: string, countKey?: string) =>
-    `${tableName}.${columnName}:${countKey ?? 'rows'}`
-
-  const rangesEqual = (a: { start: number; end: number }, b: { start: number; end: number }) =>
-    Math.abs(a.start - b.start) < 1e-9 && Math.abs(a.end - b.end) < 1e-9
-
-  const getFilterColumn = (filter: Filter): string | undefined => {
-    if (filter.column) return filter.column
-    if (filter.or && Array.isArray(filter.or) && filter.or.length > 0) {
-      const child = filter.or[0] as Filter
-      return getFilterColumn(child)
-    }
-    if (filter.and && Array.isArray(filter.and) && filter.and.length > 0) {
-      const child = filter.and[0] as Filter
-      return getFilterColumn(child)
-    }
-    if (filter.not) {
-      return getFilterColumn(filter.not)
-    }
-    return undefined
-  }
-
   /**
    * Determine which table a filter applies to for cache lookups / backend requests.
    *
@@ -1967,25 +1926,6 @@ function DatasetExplorer() {
     }
 
     return result
-  }
-
-  const filterContainsColumn = (filter: Filter, column: string): boolean => {
-    if (filter.column === column) return true
-    if (filter.or && Array.isArray(filter.or)) {
-      return filter.or.some(child => filterContainsColumn(child, column))
-    }
-    if (filter.and && Array.isArray(filter.and)) {
-      return filter.and.some(child => filterContainsColumn(child, column))
-    }
-    if (filter.not) {
-      return filterContainsColumn(filter.not, column)
-    }
-    return false
-  }
-
-  const getFilterCountKey = (filter: Filter): string => {
-    const actual = unwrapNot(filter)
-    return actual?.countByKey ?? filter.countByKey ?? ROW_COUNT_KEY
   }
 
   const hasColumnFilter = (column: string, countKey?: string): boolean => {
@@ -4442,7 +4382,6 @@ function DatasetExplorer() {
     )
   }
 
-
   if (loading) return <p>Loading explorer...</p>
   if (error) return <div role="alert" style={{ padding: '2rem', color: 'red' }}>Error: {error}</div>
   if (!dataset) return <p>Dataset not found</p>
@@ -4627,7 +4566,6 @@ function DatasetExplorer() {
           </div>
         </div>
       )}
-
 
       {/* Active Filters */}
       {filters.length > 0 && (
