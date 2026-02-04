@@ -2,12 +2,11 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import DatasetExplorer, {
-  migrateFiltersToCurrentSchema,
   persistChartOverrides,
   loadChartOverrides
 } from '../DatasetExplorer'
 import api from '../../services/api'
-import type { Filter } from '../../utils/filterHelpers'
+import { type Filter, migrateFiltersToCurrentSchema } from '../../utils/filterHelpers'
 
 // Mock the API module
 vi.mock('../../services/api', () => ({
