@@ -229,3 +229,30 @@ export const getFilterCountKey = (filter: Filter): string => {
   const actual = unwrapNot(filter)
   return actual?.countByKey ?? filter.countByKey ?? ROW_COUNT_KEY
 }
+
+/**
+ * Create a deep clone of a filter tree.
+ * Ensures legacy filters have a countByKey (defaulting to rows).
+ */
+export const cloneFilterNode = (filter: Filter): Filter => {
+  const cloned: Filter = {
+    ...filter,
+    and: filter.and ? filter.and.map(cloneFilterNode) : undefined,
+    or: filter.or ? filter.or.map(cloneFilterNode) : undefined,
+    not: filter.not ? cloneFilterNode(filter.not) : undefined,
+  }
+
+  // Ensure legacy filters have a countByKey (defaulting to rows)
+  if (cloned.countByKey === undefined && cloned.tableName) {
+    cloned.countByKey = ROW_COUNT_KEY
+  }
+
+  return cloned
+}
+
+/**
+ * Migrate filters to the current schema.
+ * Mainly ensures all filters have a countByKey property.
+ */
+export const migrateFiltersToCurrentSchema = (filters: Filter[]): Filter[] =>
+  filters.map(cloneFilterNode)

@@ -15,8 +15,17 @@ import {
   getFilterCountKey,
   getFilterColumn,
   filterContainsColumn,
+  migrateFiltersToCurrentSchema,
 } from '../utils/filterHelpers'
 import { encodeState, decodeState } from '../utils/urlHelpers'
+import {
+  savePresetsToLocalStorage,
+  loadPresetsFromLocalStorage,
+  createNewPreset,
+  normalizeImportedPresets,
+  type FilterPreset,
+  type CountBySelection
+} from '../utils/presetHelpers'
 import { getStateCode, normalizeStateName } from '../data/us-states'
 // Small categorical sets render better as pie charts; beyond this use bars.
 const MAX_PIE_CATEGORIES = 8
@@ -29,23 +38,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 const CACHE_MAX_ENTRIES_PER_TABLE = 5
 const MAX_ANCESTOR_DEPTH = 4
 
-const cloneFilterNode = (filter: Filter): Filter => {
-  const cloned: Filter = {
-    ...filter,
-    and: filter.and ? filter.and.map(cloneFilterNode) : undefined,
-    or: filter.or ? filter.or.map(cloneFilterNode) : undefined,
-    not: filter.not ? cloneFilterNode(filter.not) : undefined
-  }
 
-  if (cloned.countByKey === undefined && cloned.tableName) {
-    cloned.countByKey = ROW_COUNT_KEY
-  }
-
-  return cloned
-}
-
-export const migrateFiltersToCurrentSchema = (filters: Filter[]): Filter[] =>
-  filters.map(cloneFilterNode)
 
 const chartOverrideStorageKey = (identifier: string) => `${CHART_OVERRIDE_STORAGE_PREFIX}${identifier}`
 
@@ -151,13 +144,7 @@ interface ColumnAggregation {
   metric_path?: MetricPathSegment[]
 }
 
-interface FilterPreset {
-  id: string
-  name: string
-  filters: Filter[]
-  countBySelections: Record<string, CountBySelection>
-  createdAt: string
-}
+
 
 interface SavedDashboard {
   id: string
@@ -194,10 +181,7 @@ interface Dataset {
   tables: Table[]
 }
 
-type CountBySelection = {
-  mode: 'parent'
-  targetTable: string
-}
+
 
 type AncestorOption = {
   targetTable: string
@@ -318,6 +302,8 @@ function DatasetExplorer() {
     }
   }
 
+
+
   const loadFiltersFromLocalStorage = (): Filter[] | null => {
     try {
       const stored = localStorage.getItem(`filters_${identifier}`)
@@ -384,67 +370,47 @@ function DatasetExplorer() {
   }
 
   // Helper functions for preset management
-  const savePresetsToLocalStorage = (presets: FilterPreset[]) => {
-    try {
-      localStorage.setItem(`presets_${identifier}`, JSON.stringify(presets))
-    } catch (error) {
-      console.error('Failed to save presets to localStorage:', error)
-    }
-  }
 
-  const loadPresetsFromLocalStorage = (): FilterPreset[] => {
-    try {
-      const stored = localStorage.getItem(`presets_${identifier}`)
-      if (!stored) return []
-      const parsed: FilterPreset[] = JSON.parse(stored)
-      return parsed.map(preset => ({
-        ...preset,
-        filters: migrateFiltersToCurrentSchema(preset.filters || []),
-        countBySelections: preset.countBySelections || {}
-      }))
-    } catch (error) {
-      console.error('Failed to load presets from localStorage:', error)
-      return []
-    }
-  }
 
   const savePreset = () => {
-    if (!presetNameInput.trim() || filters.length === 0) return
+    // identifier must be string here (since we're inside component)
+    if (!identifier || !presetNameInput.trim() || filters.length === 0) return
 
-    const newPreset: FilterPreset = {
-      id: Date.now().toString(),
-      name: presetNameInput.trim(),
-      filters: JSON.parse(JSON.stringify(filters)), // Deep clone
-      countBySelections: JSON.parse(JSON.stringify(countBySelections)),
-      createdAt: new Date().toISOString()
-    }
+    const newPreset = createNewPreset(
+      presetNameInput,
+      filters,
+      countBySelections
+    )
 
     const updated = [...presets, newPreset]
     setPresets(updated)
-    savePresetsToLocalStorage(updated)
+    savePresetsToLocalStorage(localStorage, identifier, updated)
     setPresetNameInput('')
     setShowSavePresetDialog(false)
   }
 
   const applyPreset = (preset: FilterPreset) => {
-    setFilters(migrateFiltersToCurrentSchema(preset.filters || []))
+    // Presets are already migrated on load, but we can double check or just use them
+    // The extracted migrateFiltersToCurrentSchema logic is handled in load
+    setFilters(preset.filters || [])
     setCountBySelections(JSON.parse(JSON.stringify(preset.countBySelections || {})))
     setShowPresetsDropdown(false)
   }
 
   const deletePreset = (presetId: string) => {
+    if (!identifier) return
     const updated = presets.filter(p => p.id !== presetId)
     setPresets(updated)
-    savePresetsToLocalStorage(updated)
+    savePresetsToLocalStorage(localStorage, identifier, updated)
   }
 
   const renamePreset = (presetId: string, newName: string) => {
-    if (!newName.trim()) return
+    if (!identifier || !newName.trim()) return
     const updated = presets.map(p =>
       p.id === presetId ? { ...p, name: newName.trim() } : p
     )
     setPresets(updated)
-    savePresetsToLocalStorage(updated)
+    savePresetsToLocalStorage(localStorage, identifier, updated)
     setEditingPresetId(null)
   }
 
@@ -468,13 +434,10 @@ function DatasetExplorer() {
       try {
         const imported = JSON.parse(e.target?.result as string) as FilterPreset[]
         if (Array.isArray(imported)) {
-          const normalized = imported.map(preset => ({
-            ...preset,
-            countBySelections: preset.countBySelections || {}
-          }))
-          const updated = [...presets, ...normalized]
+          if (!identifier) return
+          const updated = [...presets, ...normalizeImportedPresets(imported)]
           setPresets(updated)
-          savePresetsToLocalStorage(updated)
+          savePresetsToLocalStorage(localStorage, identifier, updated)
         }
       } catch (error) {
         console.error('Failed to import filters:', error)
@@ -965,8 +928,9 @@ function DatasetExplorer() {
 
   // Load presets from localStorage on mount
   useEffect(() => {
-    const stored = loadPresetsFromLocalStorage()
-    setPresets(stored)
+    if (identifier) {
+      setPresets(loadPresetsFromLocalStorage(localStorage, identifier))
+    }
   }, [identifier])
 
   useEffect(() => {
