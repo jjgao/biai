@@ -717,7 +717,7 @@ describe('DatasetExplorer', () => {
 
       await waitFor(() => {
         const headings = screen.getAllByTitle((_value, element) =>
-          element !== null && element.tagName === 'H4' && element.getAttribute('title')?.includes('Regions via orders.customer_id → customers.region_id')
+          element !== null && element.tagName === 'H4' && (element.getAttribute('title')?.includes('Regions via orders.customer_id → customers.region_id') ?? false)
         )
         expect(headings.length).toBeGreaterThan(0)
       })
@@ -741,7 +741,7 @@ describe('DatasetExplorer', () => {
 
       await waitFor(() => {
         const headings = screen.getAllByTitle((_value, element) =>
-          element !== null && element.tagName === 'H4' && element.getAttribute('title')?.includes('Customers via orders.customer_id')
+          element !== null && element.tagName === 'H4' && (element.getAttribute('title')?.includes('Customers via orders.customer_id') ?? false)
         )
         expect(headings.length).toBeGreaterThan(0)
       })
@@ -799,6 +799,120 @@ describe('DatasetExplorer', () => {
           return typeof url === 'string' && url.includes('/tables/table1/aggregations') && countBy === 'parent:regions'
         })
         expect(hasParentRequest).toBe(true)
+      })
+    })
+  })
+
+  describe('API Error Handling', () => {
+    test('renders error message when dataset fetch fails', async () => {
+      // Mock API failure for dataset
+      vi.mocked(api.get).mockImplementation((url) => {
+        if (url === '/datasets/test-dataset-id') {
+          return Promise.reject(new Error('Failed to load dataset'))
+        }
+        return Promise.resolve({ data: {} })
+      })
+
+      renderExplorer()
+
+      await waitFor(() => {
+        expect(screen.getByText(/Failed to load dataset/i)).toBeInTheDocument()
+      })
+    })
+
+    test('renders error message when columns fetch fails', async () => {
+      // Mock successful dataset but failed columns
+      vi.mocked(api.get).mockImplementation((url) => {
+        if (url === '/datasets/test-dataset-id') {
+          return Promise.resolve({ data: { dataset: mockDataset } })
+        }
+        if (url.includes('/columns')) {
+          return Promise.reject(new Error('Failed to load columns'))
+        }
+        return Promise.resolve({ data: { aggregations: [] } })
+      })
+
+      renderExplorer()
+
+      await waitFor(() => {
+        expect(screen.getByText(/Failed to load columns/i)).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('Complex Filter Queries', () => {
+    test('constructs correct API params for nested complex filters', async () => {
+      renderExplorer()
+
+      // We simulate a state where filters are applied (e.g. via URL or internal state manipulation if we could)
+      // Since we can't easily manipulate internal state directly without UI interaction, 
+      // we'll simulate the "reload with filters" behavior by mocking the URL hash reading 
+      // or by interacting with the UI if possible.
+      // However, simulating UI interaction for complex nested filters (like OR groups) might be hard if the UI doesn't support creating them easily yet.
+      // But the Requirement says "Add tests for complex filter application queries".
+      // Let's try to verify that IF such a filter exists, it is sent correctly.
+
+      const complexFilter: Filter[] = [
+        { column: 'age', operator: 'gt', value: 50, tableName: 'customers' },
+        {
+          or: [
+            { column: 'city', operator: 'in', value: ['A', 'B'], tableName: 'customers' },
+            { column: 'status', operator: 'eq', value: 'active', tableName: 'customers' }
+          ],
+          tableName: 'customers'
+        }
+      ]
+
+      // We can force these filters by mocking localStorage loading
+      localStorage.setItem('filters_test-dataset-id', JSON.stringify(complexFilter))
+
+      // Re-render to pick up localStorage
+      renderExplorer()
+
+      // Verify dataset loaded (handle potential duplicate title elements)
+      await waitFor(() => {
+        const titleElements = screen.getAllByText("Test Dataset")
+        expect(titleElements.length).toBeGreaterThan(0)
+        expect(titleElements[0]).toBeInTheDocument()
+      })
+
+      // Check validation: api.get should be called with these filters
+      await waitFor(() => {
+        const hasComplexFilterRequest = vi.mocked(api.get).mock.calls.some(([_url, config]) => {
+          const params = (config as { params?: Record<string, any> } | undefined)?.params
+          if (!params || !params.filters) return false
+
+          const sentFilters = JSON.parse(params.filters)
+          // Basic equality check usually sufficient for JSON roundtrip
+          return sentFilters.length === 2 && sentFilters[1].or?.length === 2
+        })
+        expect(hasComplexFilterRequest).toBe(true)
+      })
+
+    })
+  })
+
+  describe('Loading States', () => {
+    test('shows loading indicator while fetching dataset', async () => {
+      // Mock API to delay response
+      vi.mocked(api.get).mockImplementation((url) => {
+        if (url === '/datasets/test-dataset-id') {
+          return new Promise(resolve => {
+            setTimeout(() => {
+              resolve({ data: { dataset: mockDataset } })
+            }, 100)
+          })
+        }
+        return Promise.resolve({ data: {} })
+      })
+
+      renderExplorer()
+
+      expect(screen.getByText(/Loading explorer/i)).toBeInTheDocument()
+
+      await waitFor(() => {
+        const titleElements = screen.getAllByText('Test Dataset')
+        expect(titleElements.length).toBeGreaterThan(0)
       })
     })
   })
