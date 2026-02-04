@@ -38,8 +38,6 @@ const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 const CACHE_MAX_ENTRIES_PER_TABLE = 5
 const MAX_ANCESTOR_DEPTH = 4
 
-
-
 const chartOverrideStorageKey = (identifier: string) => `${CHART_OVERRIDE_STORAGE_PREFIX}${identifier}`
 
 export const persistChartOverrides = (
@@ -144,8 +142,6 @@ interface ColumnAggregation {
   metric_path?: MetricPathSegment[]
 }
 
-
-
 interface SavedDashboard {
   id: string
   name: string
@@ -180,8 +176,6 @@ interface Dataset {
   tags?: string[]
   tables: Table[]
 }
-
-
 
 type AncestorOption = {
   targetTable: string
@@ -302,8 +296,6 @@ function DatasetExplorer() {
     }
   }
 
-
-
   const loadFiltersFromLocalStorage = (): Filter[] | null => {
     try {
       const stored = localStorage.getItem(`filters_${identifier}`)
@@ -370,7 +362,6 @@ function DatasetExplorer() {
   }
 
   // Helper functions for preset management
-
 
   const savePreset = () => {
     // identifier must be string here (since we're inside component)
