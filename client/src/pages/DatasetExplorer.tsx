@@ -232,6 +232,7 @@ function DatasetExplorer() {
   const databaseIdentifier = isDatabaseMode ? identifier : dataset?.database_name
   const datasetIdentifier = dataset?.id
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [columnMetadata, setColumnMetadata] = useState<Record<string, ColumnMetadata[]>>({})
   const [aggregations, setAggregations] = useState<Record<string, Record<string, AggregationCacheEntry>>>({})
   const [survivalCurves, setSurvivalCurves] = useState<Record<string, Record<string, SurvivalCacheEntry>>>({})
@@ -1160,6 +1161,7 @@ function DatasetExplorer() {
   const loadDataset = async () => {
     try {
       setLoading(true)
+      setError(null)
       setAggregations({})
       setBaselineAggregations({})
 
@@ -1198,6 +1200,7 @@ function DatasetExplorer() {
       }
     } catch (error) {
       console.error('Failed to load dataset:', error)
+      setError(error instanceof Error ? error.message : 'Failed to load dataset')
     } finally {
       setLoading(false)
     }
@@ -1274,6 +1277,7 @@ function DatasetExplorer() {
       }
     } catch (error) {
       console.error('Failed to load table aggregations:', error)
+      setError(error instanceof Error ? error.message : 'Failed to load table aggregations')
     }
   }
 
@@ -1297,6 +1301,7 @@ function DatasetExplorer() {
       setColumnMetadata(prev => ({ ...prev, [tableName]: response.data.columns }))
     } catch (error) {
       console.error('Failed to load column metadata:', error)
+      setError(error instanceof Error ? error.message : 'Failed to load column metadata')
     }
   }
 
@@ -1886,8 +1891,8 @@ function DatasetExplorer() {
 
 
 
-const rangeKey = (tableName: string, columnName: string, countKey?: string) =>
-  `${tableName}.${columnName}:${countKey ?? 'rows'}`
+  const rangeKey = (tableName: string, columnName: string, countKey?: string) =>
+    `${tableName}.${columnName}:${countKey ?? 'rows'}`
 
   const rangesEqual = (a: { start: number; end: number }, b: { start: number; end: number }) =>
     Math.abs(a.start - b.start) < 1e-9 && Math.abs(a.end - b.end) < 1e-9
@@ -1964,24 +1969,24 @@ const rangeKey = (tableName: string, columnName: string, countKey?: string) =>
     return result
   }
 
-const filterContainsColumn = (filter: Filter, column: string): boolean => {
-  if (filter.column === column) return true
-  if (filter.or && Array.isArray(filter.or)) {
-    return filter.or.some(child => filterContainsColumn(child, column))
+  const filterContainsColumn = (filter: Filter, column: string): boolean => {
+    if (filter.column === column) return true
+    if (filter.or && Array.isArray(filter.or)) {
+      return filter.or.some(child => filterContainsColumn(child, column))
+    }
+    if (filter.and && Array.isArray(filter.and)) {
+      return filter.and.some(child => filterContainsColumn(child, column))
+    }
+    if (filter.not) {
+      return filterContainsColumn(filter.not, column)
+    }
+    return false
   }
-  if (filter.and && Array.isArray(filter.and)) {
-    return filter.and.some(child => filterContainsColumn(child, column))
-  }
-  if (filter.not) {
-    return filterContainsColumn(filter.not, column)
-  }
-  return false
-}
 
-const getFilterCountKey = (filter: Filter): string => {
-  const actual = unwrapNot(filter)
-  return actual?.countByKey ?? filter.countByKey ?? ROW_COUNT_KEY
-}
+  const getFilterCountKey = (filter: Filter): string => {
+    const actual = unwrapNot(filter)
+    return actual?.countByKey ?? filter.countByKey ?? ROW_COUNT_KEY
+  }
 
   const hasColumnFilter = (column: string, countKey?: string): boolean => {
     const resolvedKey = countKey ?? ROW_COUNT_KEY
@@ -2476,7 +2481,7 @@ const getFilterCountKey = (filter: Filter): string => {
     return filtered.length > 0 ? filtered : histogram
   }
 
-const renderNumericFilterMenu = (
+  const renderNumericFilterMenu = (
     tableName: string,
     columnName: string,
     histogram?: HistogramBin[],
@@ -4439,6 +4444,7 @@ const renderNumericFilterMenu = (
 
 
   if (loading) return <p>Loading explorer...</p>
+  if (error) return <div role="alert" style={{ padding: '2rem', color: 'red' }}>Error: {error}</div>
   if (!dataset) return <p>Dataset not found</p>
 
   return (
@@ -5930,312 +5936,312 @@ const renderNumericFilterMenu = (
       {dataset.tables
         .filter(table => table.name === activeTab)
         .map(table => {
-        const tableAggregations = getAggregationsForTable(table.name)
-        if (!tableAggregations) return null
+          const tableAggregations = getAggregationsForTable(table.name)
+          if (!tableAggregations) return null
 
-        // Sort aggregations by display priority (if available from metadata)
-        const sortedAggregations = [...tableAggregations].sort((a, b) => {
-          const metaA = getColumnMetadata(table.name, a.column_name)
-          const metaB = getColumnMetadata(table.name, b.column_name)
-          const priorityA = metaA?.display_priority || 0
-          const priorityB = metaB?.display_priority || 0
-          return priorityB - priorityA
-        })
+          // Sort aggregations by display priority (if available from metadata)
+          const sortedAggregations = [...tableAggregations].sort((a, b) => {
+            const metaA = getColumnMetadata(table.name, a.column_name)
+            const metaB = getColumnMetadata(table.name, b.column_name)
+            const priorityA = metaA?.display_priority || 0
+            const priorityB = metaB?.display_priority || 0
+            return priorityB - priorityA
+          })
 
-        // Filter out hidden columns
-        const visibleAggregations = sortedAggregations.filter(agg => {
-          const metadata = getColumnMetadata(table.name, agg.column_name)
-          return !metadata?.is_hidden
-        })
+          // Filter out hidden columns
+          const visibleAggregations = sortedAggregations.filter(agg => {
+            const metadata = getColumnMetadata(table.name, agg.column_name)
+            return !metadata?.is_hidden
+          })
 
-        if (visibleAggregations.length === 0) return null
+          if (visibleAggregations.length === 0) return null
 
-        const tableColor = getTableColor(table.name)
-        const primaryAggregation = visibleAggregations[0]
-        const tableRowCount = primaryAggregation?.total_rows ?? table.rowCount ?? 0
+          const tableColor = getTableColor(table.name)
+          const primaryAggregation = visibleAggregations[0]
+          const tableRowCount = primaryAggregation?.total_rows ?? table.rowCount ?? 0
 
-        // Get baseline (unfiltered) row count for this table
-        const baselineTableAggs = baselineAggregations[table.name] || []
-        const baselineSample = baselineTableAggs.length > 0 ? baselineTableAggs[0] : undefined
-        const baselineMatches = metricsMatch(baselineSample, primaryAggregation)
-        const baselineRowCount = baselineMatches
-          ? baselineSample?.total_rows ?? tableRowCount
-          : null
+          // Get baseline (unfiltered) row count for this table
+          const baselineTableAggs = baselineAggregations[table.name] || []
+          const baselineSample = baselineTableAggs.length > 0 ? baselineTableAggs[0] : undefined
+          const baselineMatches = metricsMatch(baselineSample, primaryAggregation)
+          const baselineRowCount = baselineMatches
+            ? baselineSample?.total_rows ?? tableRowCount
+            : null
 
-        // Get filter counts for this table
-        const effectiveFilters = getAllEffectiveFilters()
-        const tableFilters = effectiveFilters[table.name] || { direct: [], propagated: [] }
-        const directFilterCount = tableFilters.direct.length
-        const propagatedFilterCount = tableFilters.propagated.length
-        const hasTableFilters = directFilterCount > 0 || propagatedFilterCount > 0
+          // Get filter counts for this table
+          const effectiveFilters = getAllEffectiveFilters()
+          const tableFilters = effectiveFilters[table.name] || { direct: [], propagated: [] }
+          const directFilterCount = tableFilters.direct.length
+          const propagatedFilterCount = tableFilters.propagated.length
+          const hasTableFilters = directFilterCount > 0 || propagatedFilterCount > 0
 
-        // Calculate maximum path length for transitive relationships (2+ hops only)
-        let maxPathLength = 0
-        if (propagatedFilterCount > 0 && dataset?.tables) {
-          for (const filter of tableFilters.propagated) {
-            if (filter.tableName) {
-              const path = findRelationshipPath(table.name, filter.tableName, dataset.tables)
-              if (path && path.length > 1) {
-                const pathLength = path.length - 1 // Number of hops
-                // Only track paths with 2+ hops (truly transitive)
-                if (pathLength >= 2) {
-                  maxPathLength = Math.max(maxPathLength, pathLength)
+          // Calculate maximum path length for transitive relationships (2+ hops only)
+          let maxPathLength = 0
+          if (propagatedFilterCount > 0 && dataset?.tables) {
+            for (const filter of tableFilters.propagated) {
+              if (filter.tableName) {
+                const path = findRelationshipPath(table.name, filter.tableName, dataset.tables)
+                if (path && path.length > 1) {
+                  const pathLength = path.length - 1 // Number of hops
+                  // Only track paths with 2+ hops (truly transitive)
+                  if (pathLength >= 2) {
+                    maxPathLength = Math.max(maxPathLength, pathLength)
+                  }
                 }
               }
             }
           }
-        }
 
-        const metricLabels = getMetricLabels(primaryAggregation)
-        const parentOptions = ancestorOptions[table.name] || []
-        const countByValue = getCountByValueForTable(table.name)
+          const metricLabels = getMetricLabels(primaryAggregation)
+          const parentOptions = ancestorOptions[table.name] || []
+          const countByValue = getCountByValueForTable(table.name)
 
-        return (
-          <div key={table.name} style={{ marginBottom: '2.5rem' }}>
-            {/* Table Section Header */}
-            <div style={{
-              background: `linear-gradient(135deg, ${tableColor}15, ${tableColor}05)`,
-              border: `2px solid ${tableColor}40`,
-              borderRadius: '8px',
-              padding: '0.75rem 1.25rem',
-              marginBottom: '1rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '1rem'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                {parentOptions.length > 0 ? renderTabCountIndicator(table.name, countByValue) : (
+          return (
+            <div key={table.name} style={{ marginBottom: '2.5rem' }}>
+              {/* Table Section Header */}
+              <div style={{
+                background: `linear-gradient(135deg, ${tableColor}15, ${tableColor}05)`,
+                border: `2px solid ${tableColor}40`,
+                borderRadius: '8px',
+                padding: '0.75rem 1.25rem',
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '1rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  {parentOptions.length > 0 ? renderTabCountIndicator(table.name, countByValue) : (
+                    <div style={{
+                      background: tableColor,
+                      color: 'white',
+                      width: '8px',
+                      height: '40px',
+                      borderRadius: '4px'
+                    }} />
+                  )}
+                  <div>
+                    <h3 style={{
+                      margin: 0,
+                      fontSize: '1.1rem',
+                      fontWeight: 600,
+                      color: '#333'
+                    }}>
+                      {table.displayName || table.name}
+                    </h3>
+                    <div style={{
+                      fontSize: '0.8rem',
+                      color: '#666',
+                      marginTop: '0.2rem'
+                    }}>
+                      {hasTableFilters && baselineRowCount !== null ? (
+                        <>
+                          <span style={{ color: '#E65100', fontWeight: 600 }}>
+                            {tableRowCount.toLocaleString()}
+                          </span>
+                          <span style={{ color: '#999' }}> / </span>
+                          <span>{baselineRowCount.toLocaleString()}</span>
+                          <span style={{
+                            marginLeft: '0.3rem',
+                            padding: '0.1rem 0.4rem',
+                            background: '#FF9800',
+                            color: 'white',
+                            borderRadius: '8px',
+                            fontSize: '0.7rem',
+                            fontWeight: 600
+                          }}>
+                            {baselineRowCount > 0 ? ((tableRowCount / baselineRowCount) * 100).toFixed(1) : '0'}%
+                          </span>
+                          <span> {metricLabels.short} · {visibleAggregations.length} columns</span>
+                          <span style={{ color: '#999', fontSize: '0.75rem' }}> (by {getCountByLabelFromCacheKey(table.name, countByValue)})</span>
+                        </>
+                      ) : (
+                        <>
+                          {tableRowCount.toLocaleString()} {metricLabels.short} · {visibleAggregations.length} columns
+                          <span style={{ color: '#999', fontSize: '0.75rem' }}> (by {getCountByLabelFromCacheKey(table.name, countByValue)})</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {/* Filter badges */}
+                  {directFilterCount > 0 && (
+                    <div
+                      style={{
+                        background: '#1976D2',
+                        color: 'white',
+                        fontSize: '0.7rem',
+                        padding: '0.3rem 0.6rem',
+                        borderRadius: '4px',
+                        fontWeight: 600
+                      }}
+                      title={`${directFilterCount} direct filter${directFilterCount > 1 ? 's' : ''} applied`}
+                    >
+                      {directFilterCount} filter{directFilterCount > 1 ? 's' : ''}
+                    </div>
+                  )}
+                  {propagatedFilterCount > 0 && (
+                    <div
+                      style={{
+                        background: '#64B5F6',
+                        color: 'white',
+                        fontSize: '0.7rem',
+                        padding: '0.3rem 0.6rem',
+                        borderRadius: '4px',
+                        fontWeight: 600,
+                        fontStyle: 'italic'
+                      }}
+                      title={`${propagatedFilterCount} filter${propagatedFilterCount > 1 ? 's' : ''} propagated from related tables${maxPathLength > 0 ? ` (max ${maxPathLength} hop${maxPathLength > 1 ? 's' : ''})` : ''}`}
+                    >
+                      +{propagatedFilterCount} linked{maxPathLength > 0 ? ` (${maxPathLength}-hop)` : ''}
+                    </div>
+                  )}
+                  {/* Add All Charts button */}
+                  <button
+                    onClick={() => {
+                      addAllChartsToTable(table.name)
+                    }}
+                    style={{
+                      padding: '0.3rem 0.6rem',
+                      background: '#4CAF50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#45a049'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#4CAF50'
+                    }}
+                    title="Add all charts from this table to dashboard"
+                  >
+                    + Add All
+                  </button>
                   <div style={{
                     background: tableColor,
                     color: 'white',
-                    width: '8px',
-                    height: '40px',
-                    borderRadius: '4px'
-                  }} />
-                )}
-                <div>
-                  <h3 style={{
-                    margin: 0,
-                    fontSize: '1.1rem',
-                    fontWeight: 600,
-                    color: '#333'
-                  }}>
-                    {table.displayName || table.name}
-                  </h3>
-                  <div style={{
-                    fontSize: '0.8rem',
-                    color: '#666',
-                    marginTop: '0.2rem'
-                  }}>
-                    {hasTableFilters && baselineRowCount !== null ? (
-                      <>
-                        <span style={{ color: '#E65100', fontWeight: 600 }}>
-                          {tableRowCount.toLocaleString()}
-                        </span>
-                        <span style={{ color: '#999' }}> / </span>
-                        <span>{baselineRowCount.toLocaleString()}</span>
-                        <span style={{
-                          marginLeft: '0.3rem',
-                          padding: '0.1rem 0.4rem',
-                          background: '#FF9800',
-                          color: 'white',
-                          borderRadius: '8px',
-                          fontSize: '0.7rem',
-                          fontWeight: 600
-                        }}>
-                          {baselineRowCount > 0 ? ((tableRowCount / baselineRowCount) * 100).toFixed(1) : '0'}%
-                        </span>
-                        <span> {metricLabels.short} · {visibleAggregations.length} columns</span>
-                        <span style={{ color: '#999', fontSize: '0.75rem' }}> (by {getCountByLabelFromCacheKey(table.name, countByValue)})</span>
-                      </>
-                    ) : (
-                      <>
-                        {tableRowCount.toLocaleString()} {metricLabels.short} · {visibleAggregations.length} columns
-                        <span style={{ color: '#999', fontSize: '0.75rem' }}> (by {getCountByLabelFromCacheKey(table.name, countByValue)})</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                {/* Filter badges */}
-                {directFilterCount > 0 && (
-                  <div
-                    style={{
-                      background: '#1976D2',
-                      color: 'white',
-                      fontSize: '0.7rem',
-                      padding: '0.3rem 0.6rem',
-                      borderRadius: '4px',
-                      fontWeight: 600
-                    }}
-                    title={`${directFilterCount} direct filter${directFilterCount > 1 ? 's' : ''} applied`}
-                  >
-                    {directFilterCount} filter{directFilterCount > 1 ? 's' : ''}
-                  </div>
-                )}
-                {propagatedFilterCount > 0 && (
-                  <div
-                    style={{
-                      background: '#64B5F6',
-                      color: 'white',
-                      fontSize: '0.7rem',
-                      padding: '0.3rem 0.6rem',
-                      borderRadius: '4px',
-                      fontWeight: 600,
-                      fontStyle: 'italic'
-                    }}
-                    title={`${propagatedFilterCount} filter${propagatedFilterCount > 1 ? 's' : ''} propagated from related tables${maxPathLength > 0 ? ` (max ${maxPathLength} hop${maxPathLength > 1 ? 's' : ''})` : ''}`}
-                  >
-                    +{propagatedFilterCount} linked{maxPathLength > 0 ? ` (${maxPathLength}-hop)` : ''}
-                  </div>
-                )}
-                {/* Add All Charts button */}
-                <button
-                  onClick={() => {
-                    addAllChartsToTable(table.name)
-                  }}
-                  style={{
-                    padding: '0.3rem 0.6rem',
-                    background: '#4CAF50',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
                     fontSize: '0.7rem',
-                    fontWeight: 600,
-                    transition: 'background 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#45a049'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#4CAF50'
-                  }}
-                  title="Add all charts from this table to dashboard"
-                >
-                  + Add All
-                </button>
-                <div style={{
-                  background: tableColor,
-                  color: 'white',
-                  fontSize: '0.7rem',
-                  padding: '0.3rem 0.6rem',
-                  borderRadius: '4px',
-                  fontWeight: 600
-                }}>
-                  {table.name}
+                    padding: '0.3rem 0.6rem',
+                    borderRadius: '4px',
+                    fontWeight: 600
+                  }}>
+                    {table.name}
+                  </div>
                 </div>
               </div>
+
+              {/* Table Charts */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, 175px)',
+                gridAutoRows: '175px',
+                gap: '0.5rem',
+                gridAutoFlow: 'dense'
+              }}>
+                {visibleAggregations.map(agg => {
+                  const displayTitle = getDisplayTitle(table.name, agg.column_name)
+                  const cacheKey = getEffectiveCacheKeyForChart(table.name, agg.column_name)
+                  const defaultKey = getCountByCacheKey(table.name)
+                  const aggregationForChart = cacheKey === defaultKey ? agg : undefined
+                  const columnMeta = getColumnMetadata(table.name, agg.column_name)
+                  const metaDisplayType = columnMeta?.display_type
+                  const normalizedDisplayType =
+                    agg?.normalized_display_type || agg?.display_type || metaDisplayType || ''
+
+                  if ((normalizedDisplayType === 'categorical' || metaDisplayType === 'survival_status') && agg.categories) {
+                    const categoryCount = agg.categories.length
+                    const viewPref = getViewPreference(table.name, agg.column_name, categoryCount)
+                    const allowPie = categoryCount <= MAX_PIE_CATEGORIES
+
+                    if (viewPref === 'table') {
+                      return (
+                        <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 2', gridRow: 'span 2' }}>
+                          {renderTableView(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey)}
+                        </div>
+                      )
+                    }
+
+                    if (allowPie) {
+                      return (
+                        <div key={`${table.name}_${agg.column_name}`}>
+                          {renderPieChart(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey)}
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 2' }}>
+                        {renderBarChart(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey)}
+                      </div>
+                    )
+                  } else if (metaDisplayType === 'survival_time') {
+                    const view = getSurvivalViewPreference(table.name, agg.column_name)
+                    const toggleButton = (
+                      <button
+                        type="button"
+                        onClick={event => {
+                          event.stopPropagation()
+                          toggleSurvivalViewPreference(table.name, agg.column_name)
+                        }}
+                        style={{
+                          border: 'none',
+                          background: '#f0f0f0',
+                          color: '#333',
+                          borderRadius: '50%',
+                          width: '20px',
+                          height: '20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          lineHeight: 1
+                        }}
+                        title={view === 'km' ? 'Show histogram' : 'Show survival curve'}
+                      >
+                        {view === 'km' ? '📊' : '┐'}
+                      </button>
+                    )
+
+                    if (view === 'km') {
+                      return (
+                        <div key={`${table.name}_${agg.column_name}_km`} style={{ gridColumn: 'span 2', gridRow: 'span 2' }}>
+                          {renderSurvivalChart(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey, undefined, toggleButton, false)}
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div key={`${table.name}_${agg.column_name}_hist`} style={{ gridColumn: 'span 2' }}>
+                        {renderHistogram(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey, undefined, toggleButton)}
+                      </div>
+                    )
+                  } else if (normalizedDisplayType === 'numeric' && agg.histogram) {
+                    return (
+                      <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 2' }}>
+                        {renderHistogram(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey)}
+                      </div>
+                    )
+                  } else if (agg.display_type === 'geographic' && agg.categories) {
+                    return (
+                      <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 4' }}>
+                        {renderMapChart(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey)}
+                      </div>
+                    )
+                  }
+                  return null
+                })}
+              </div>
             </div>
-
-            {/* Table Charts */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, 175px)',
-              gridAutoRows: '175px',
-              gap: '0.5rem',
-              gridAutoFlow: 'dense'
-            }}>
-              {visibleAggregations.map(agg => {
-                const displayTitle = getDisplayTitle(table.name, agg.column_name)
-                const cacheKey = getEffectiveCacheKeyForChart(table.name, agg.column_name)
-                const defaultKey = getCountByCacheKey(table.name)
-                const aggregationForChart = cacheKey === defaultKey ? agg : undefined
-                const columnMeta = getColumnMetadata(table.name, agg.column_name)
-                const metaDisplayType = columnMeta?.display_type
-                const normalizedDisplayType =
-                  agg?.normalized_display_type || agg?.display_type || metaDisplayType || ''
-
-                if ((normalizedDisplayType === 'categorical' || metaDisplayType === 'survival_status') && agg.categories) {
-                  const categoryCount = agg.categories.length
-                  const viewPref = getViewPreference(table.name, agg.column_name, categoryCount)
-                  const allowPie = categoryCount <= MAX_PIE_CATEGORIES
-
-                  if (viewPref === 'table') {
-                    return (
-                      <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 2', gridRow: 'span 2' }}>
-                        {renderTableView(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey)}
-                      </div>
-                    )
-                  }
-
-                  if (allowPie) {
-                    return (
-                      <div key={`${table.name}_${agg.column_name}`}>
-                        {renderPieChart(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey)}
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 2' }}>
-                      {renderBarChart(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey)}
-                    </div>
-                  )
-                } else if (metaDisplayType === 'survival_time') {
-                  const view = getSurvivalViewPreference(table.name, agg.column_name)
-                  const toggleButton = (
-                    <button
-                      type="button"
-                      onClick={event => {
-                        event.stopPropagation()
-                        toggleSurvivalViewPreference(table.name, agg.column_name)
-                      }}
-                      style={{
-                        border: 'none',
-                        background: '#f0f0f0',
-                        color: '#333',
-                        borderRadius: '50%',
-                        width: '20px',
-                        height: '20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.8rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        lineHeight: 1
-                      }}
-                      title={view === 'km' ? 'Show histogram' : 'Show survival curve'}
-                    >
-                      {view === 'km' ? '📊' : '┐'}
-                    </button>
-                  )
-
-                  if (view === 'km') {
-                    return (
-                      <div key={`${table.name}_${agg.column_name}_km`} style={{ gridColumn: 'span 2', gridRow: 'span 2' }}>
-                        {renderSurvivalChart(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey, undefined, toggleButton, false)}
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <div key={`${table.name}_${agg.column_name}_hist`} style={{ gridColumn: 'span 2' }}>
-                      {renderHistogram(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey, undefined, toggleButton)}
-                    </div>
-                  )
-                } else if (normalizedDisplayType === 'numeric' && agg.histogram) {
-                  return (
-                    <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 2' }}>
-                      {renderHistogram(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey)}
-                    </div>
-                  )
-                } else if (agg.display_type === 'geographic' && agg.categories) {
-                  return (
-                    <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 4' }}>
-                      {renderMapChart(displayTitle, table.name, agg.column_name, tableColor, aggregationForChart, cacheKey)}
-                    </div>
-                  )
-                }
-                return null
-              })}
-            </div>
-          </div>
-        )
-      })}
+          )
+        })}
     </div>
   )
 }
