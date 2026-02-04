@@ -29,9 +29,17 @@ vi.mock('react-router-dom', async () => {
   }
 })
 
-// Mock Plotly to avoid rendering issues in tests
+// Mock Plotly to capture props for testing
 vi.mock('react-plotly.js', () => ({
-  default: () => <div data-testid="mock-plot">Mock Plot</div>,
+  default: vi.fn((props) => (
+    <div
+      data-testid="mock-plot"
+      data-layout-title={props.layout?.title?.text}
+      data-chart-type={props.data?.[0]?.type}
+    >
+      Mock Plot
+    </div>
+  )),
 }))
 
 // Mock SafeHtml component
@@ -913,6 +921,65 @@ describe('DatasetExplorer', () => {
         const titleElements = screen.getAllByText('Test Dataset')
         expect(titleElements.length).toBeGreaterThan(0)
       })
+    })
+  })
+
+  describe('Interaction Tests', () => {
+    test('switches table tabs correctly', async () => {
+      renderExplorer()
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Test Dataset').length).toBeGreaterThan(0)
+      })
+
+      // Initial state: Dashboard is active by default
+      expect(screen.getByText(/Your Dashboard is Empty/i)).toBeInTheDocument()
+
+      // Switch to Customers tab
+      const customersTab = screen.getByRole('button', { name: /Customers/i })
+      fireEvent.click(customersTab)
+
+      await waitFor(() => {
+        // Verify Customers table content (100 rows)
+        // Using stricter text match or querying within a region would be better,
+        // but looking for "100 rows" which is unique to Customers is sufficient here.
+        expect(screen.getByText(/100\s+rows/i)).toBeInTheDocument()
+      })
+
+      // Switch to Orders tab
+      const ordersTab = screen.getByRole('button', { name: /Orders/i })
+      fireEvent.click(ordersTab)
+
+      await waitFor(() => {
+        const heading = screen.queryByRole('heading', { name: /Orders/i, level: 3 })
+        expect(heading).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('Chart Rendering', () => {
+    test('renders correct chart types based on metadata', async () => {
+      renderExplorer()
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Test Dataset').length).toBeGreaterThan(0)
+      })
+
+      // Switch to Customers tab
+      const customersTab = screen.getByRole('button', { name: /Customers/i })
+      fireEvent.click(customersTab)
+
+      await waitFor(() => {
+        // Wait for charts to render
+        expect(screen.queryAllByTestId('mock-plot').length).toBeGreaterThan(0)
+      })
+
+      // Verify chart types are determined by column metadata
+      const plots = screen.getAllByTestId('mock-plot')
+      const chartTypes = plots.map(p => p.getAttribute('data-chart-type'))
+
+      // Country (categorical with 3 values) should render as pie chart
+      expect(chartTypes).toContain('pie')
     })
   })
 })
