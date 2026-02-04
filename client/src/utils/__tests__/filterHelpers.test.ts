@@ -6,6 +6,10 @@ import {
   findRelationshipPath,
   tablesHaveRelationship,
   getAllEffectiveFilters,
+  unwrapNot,
+  rangeKey,
+  rangesEqual,
+  getFilterCountKey,
   type Filter,
   type Table,
 } from '../filterHelpers'
@@ -515,6 +519,62 @@ describe('filterHelpers', () => {
       expect(result.samples).toEqual({ direct: [], propagated: [] })
       expect(result.mutations).toEqual({ direct: [], propagated: [] })
       expect(result.unrelated).toEqual({ direct: [], propagated: [] })
+    })
+  })
+
+  describe('unwrapNot', () => {
+    test('returns undefined for undefined/null', () => {
+      expect(unwrapNot(undefined)).toBeUndefined()
+      expect(unwrapNot(null)).toBeUndefined()
+    })
+
+    test('returns filter itself if not NOT', () => {
+      const filter: Filter = { column: 'a' }
+      expect(unwrapNot(filter)).toBe(filter)
+    })
+
+    test('returns inner filter if NOT', () => {
+      const inner: Filter = { column: 'a' }
+      const filter: Filter = { not: inner }
+      expect(unwrapNot(filter)).toBe(inner)
+    })
+  })
+
+  describe('rangeKey', () => {
+    test('generates expected key format', () => {
+      expect(rangeKey('table1', 'col1', 'rows')).toBe('table1.col1:rows')
+    })
+    test('defaults to rows if countKey missing', () => {
+      expect(rangeKey('table1', 'col1')).toBe('table1.col1:rows')
+    })
+  })
+
+  describe('rangesEqual', () => {
+    test('returns true for identical ranges', () => {
+      expect(rangesEqual({ start: 1, end: 2 }, { start: 1, end: 2 })).toBe(true)
+    })
+    test('returns true for close enough ranges (epsilon)', () => {
+      expect(rangesEqual({ start: 1, end: 2 }, { start: 1 + 1e-10, end: 2 - 1e-10 })).toBe(true)
+    })
+    test('returns false for different ranges', () => {
+      expect(rangesEqual({ start: 1, end: 2 }, { start: 1.1, end: 2 })).toBe(false)
+    })
+  })
+
+  describe('getFilterCountKey', () => {
+    test('returns countByKey from filter', () => {
+      const filter: Filter = { column: 'a', countByKey: 'parent:x' }
+      expect(getFilterCountKey(filter)).toBe('parent:x')
+    })
+    test('returns rows default if missing', () => {
+      const filter: Filter = { column: 'a' }
+      expect(getFilterCountKey(filter)).toBe('rows') // strictly 'rows' based on default
+    })
+    test('returns countByKey from inner NOT filter', () => {
+      const filter: Filter = {
+        not: { column: 'a', countByKey: 'parent:y' }
+      }
+      expect(getFilterCountKey(filter)).toBe('parent:y')
     })
   })
 })
