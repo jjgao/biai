@@ -2,11 +2,11 @@
 
 **Date:** 2026-02-04  
 **Status:** Phase 0 Complete  
-**Total Tests:** 83 passing
+**Total Tests:** 105 passing
 
 ## Summary
 
-This document establishes the baseline test coverage for `DatasetExplorer.tsx` before beginning the refactoring work outlined in Epic #92.
+This document establishes the baseline test coverage for `DatasetExplorer.tsx` before beginning the refactoring work outlined in Epic #92. All 105 tests verify critical functionality including filter logic, presets, URL state management, cross-table relationships, and UI interactions.
 
 ## Test Breakdown
 
@@ -64,9 +64,9 @@ This document establishes the baseline test coverage for `DatasetExplorer.tsx` b
   - Switches table tabs correctly (Dashboard → Customers → Orders)
   - Renders correct chart types based on metadata
 
-### Unit Tests (56 tests)
+### Unit Tests (78 tests)
 
-**file:** `client/src/utils/__tests__/filterHelpers.test.ts` (47 tests)
+**File:** `client/src/utils/__tests__/filterHelpers.test.ts` (41 tests)
 - Filter column/table extraction
 - Column containment checks
 - Relationship path finding
@@ -75,18 +75,23 @@ This document establishes the baseline test coverage for `DatasetExplorer.tsx` b
 - Range key generation and comparison
 - Filter count key generation
 
-**File:** `client/src/utils/__tests__/urlHelpers.test.ts` (9 tests)
+**File:** `client/src/utils/__tests__/urlHelpers.test.ts` (6 tests)
 - State encoding/decoding
 - Round-trip serialization
 - Error handling for invalid JSON
 - Handling of circular references
 
-**File:** `client/src/utils/__tests__/presetHelpers.test.ts` (9 tests - not included in count above, separate run)
+**File:** `client/src/utils/__tests__/presetHelpers.test.ts` (9 tests)
 - Save/load presets to/from localStorage
 - Create new preset with deep cloning
 - Normalize imported presets
 - Migrate legacy filters on load
 - Error handling
+
+**File:** `client/src/data/__tests__/us-states.test.ts` (22 tests)
+- State code normalization
+- State name lookups
+- Edge case handling
 
 ## Coverage Areas
 
@@ -151,7 +156,7 @@ With this baseline established, we can now proceed with:
 
 ## Notes
 
-- All tests pass consistently (83/83)
+- All tests pass consistently (105/105)
 - Test execution time: ~4.3 seconds
 - No flaky tests identified
 - Mock data structure matches production schema

@@ -951,20 +951,11 @@ describe('DatasetExplorer', () => {
       fireEvent.click(ordersTab)
 
       await waitFor(() => {
-        // Verify we switched to Orders
         const heading = screen.queryByRole('heading', { name: /Orders/i, level: 3 })
-        if (!heading) {
-          console.log('Orders heading not found. Body:', document.body.textContent)
-          screen.debug()
-        }
         expect(heading).toBeInTheDocument()
-
-        // Verify Orders table content (500 rows or check for amount column)
-        // Note: earlier debugging suggested row count mismatch or ambiguity,
-        // so we check for the heading which confirms tab switch.
-        // We can also check for 'amount' if possible, or just the tab switch is enough for interaction test.
       })
     })
+  })
 
   describe('Chart Rendering', () => {
     test('renders correct chart types based on metadata', async () => {
@@ -983,23 +974,12 @@ describe('DatasetExplorer', () => {
         expect(screen.queryAllByTestId('mock-plot').length).toBeGreaterThan(0)
       })
 
-      // Verify "Country" chart (categorical with few values -> pie)
-      // We look for the plot container associated with "Country" title or just find any pie chart
-      // Since our mock prop data is accessible via data attributes:
+      // Verify chart types are determined by column metadata
       const plots = screen.getAllByTestId('mock-plot')
-      
-      // Find the plot for Country
-      // Note: titles are rendered in H4 outside the plot, but we can verify at least one pie chart exists
-      // or check if specific chart title maps to specific type if we can associate them.
-      // But looking at DOM structure in debug output, H4 is sibling to div wrapping plot.
-      // We can just check that we have a pie chart (Country) and a histogram (Age).
-      
       const chartTypes = plots.map(p => p.getAttribute('data-chart-type'))
+
+      // Country (categorical with 3 values) should render as pie chart
       expect(chartTypes).toContain('pie')
-      
-      // If Age is rendered, it should be histogram (numeric)
-      // expect(chartTypes).toContain('histogram') 
     })
   })
-})
 })
