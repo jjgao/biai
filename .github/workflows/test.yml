@@ -9,6 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       clickhouse:
@@ -40,18 +41,20 @@ jobs:
           for i in {1..30}; do
             if curl -s http://localhost:8123/ping > /dev/null; then
               echo "ClickHouse is ready"
-              break
+              exit 0
             fi
             echo "Waiting for ClickHouse..."
             sleep 1
           done
+          echo "ClickHouse failed to start"
+          exit 1
 
       - name: Initialize ClickHouse database
         run: |
-          curl -s "http://localhost:8123/" --data "CREATE DATABASE IF NOT EXISTS biai"
+          curl -sf "http://localhost:8123/" --data "CREATE DATABASE IF NOT EXISTS biai"
           for f in clickhouse/init/*.sql; do
             echo "Running $f..."
-            curl -s "http://localhost:8123/?database=biai" --data-binary @"$f"
+            curl -sf "http://localhost:8123/?database=biai" --data-binary @"$f"
           done
 
       - name: Run server tests
