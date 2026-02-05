@@ -77,7 +77,5 @@ jobs:
       - name: Build client
         run: npm run build --workspace=client
 
-      # Note: Server build is skipped due to pre-existing TypeScript errors.
-      # These should be fixed in a separate PR before enabling:
-      # - name: Build server
-      #   run: npm run build --workspace=server
+      - name: Build server
+        run: npm run build --workspace=server

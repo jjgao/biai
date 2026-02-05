@@ -131,10 +131,10 @@ router.post('/list', async (req, res) => {
     })
 
     const rows = await result.json<{ name: string }>()
-    res.json({ databases: buildAvailableDatabasesResponse(rows) })
+    return res.json({ databases: buildAvailableDatabasesResponse(rows) })
   } catch (error: any) {
     console.error('List databases (custom host) error:', error)
-    res.status(500).json({ error: 'Failed to list databases', message: error.message })
+    return res.status(500).json({ error: 'Failed to list databases', message: error.message })
   } finally {
     await client.close()
   }
@@ -442,7 +442,7 @@ router.get('/:database/tables/:table/aggregations', async (req, res) => {
               format: 'JSONEachRow'
             })
 
-            const numericStats = await numericResult.json()
+            const numericStats = await numericResult.json<{ min: number; max: number; mean: number; median: number; stddev: number; q25: number; q75: number }>()
             aggregation.numeric_stats = numericStats[0]
 
             const min = numericStats[0].min
@@ -476,7 +476,7 @@ router.get('/:database/tables/:table/aggregations', async (req, res) => {
         })
       )
 
-      res.json({ aggregations })
+      return res.json({ aggregations })
     } finally {
       if (shouldClose) {
         await client.close()
@@ -485,7 +485,7 @@ router.get('/:database/tables/:table/aggregations', async (req, res) => {
   } catch (error: any) {
     const status = error?.status || 500
     console.error('Get aggregations error:', error)
-    res.status(status).json({
+    return res.status(status).json({
       error: status === 404 ? 'Dataset not found' : 'Failed to get aggregations',
       message: error.message
     })

@@ -121,7 +121,6 @@ export async function getSpreadsheetPreview(filePath: string): Promise<Spreadshe
 
       // First row is header (already extracted above, but this gives us data rows)
       const dataRows = previewDataFull.slice(1)
-      const previewRows = dataRows.slice(0, 5) // Send 5 rows to frontend for display
 
       // Analyze columns
       const usedColumnNames = new Set<string>()

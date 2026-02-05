@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import request from 'supertest'
-import express from 'express'
+import express, { Request, Response, NextFunction } from 'express'
 
 const { mockMulterBody } = vi.hoisted(() => ({
   mockMulterBody: { current: {} }
@@ -25,12 +25,12 @@ vi.mock('fs/promises', () => ({
 // Mock multer
 vi.mock('multer', () => {
   const multer = () => ({
-    single: () => (req, res, next) => {
+    single: () => (req: Request, _res: Response, next: NextFunction) => {
       req.file = {
         path: 'mock/path/test.csv',
         originalname: 'test.csv',
         mimetype: 'text/csv'
-      }
+      } as Express.Multer.File
       req.body = { ...req.body, ...mockMulterBody.current }
       next()
     }

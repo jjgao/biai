@@ -89,14 +89,6 @@ describe('DatasetService - Import into Existing Table', () => {
   })
 
   test('should append data to existing table', async () => {
-    // Mock existing table
-    const targetTable = {
-      table_id: 'existing_table',
-      table_name: 'existing_table',
-      clickhouse_table_name: `${databaseName}.existing_table`,
-      primary_key: 'id'
-    }
-    
     const parsedData = {
       columns: [
         { name: 'id', type: 'String' },

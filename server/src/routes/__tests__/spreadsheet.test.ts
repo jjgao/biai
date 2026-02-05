@@ -22,7 +22,7 @@ vi.mock('../../utils/urlFetcher.js', () => ({
 // Mock multer
 vi.mock('multer', () => {
   const multer = () => ({
-    single: () => (req: any, res: any, next: any) => {
+    single: () => (req: any, _res: any, next: any) => {
       req.file = {
         path: 'mock/path/test.xlsx',
         originalname: 'test.xlsx',
