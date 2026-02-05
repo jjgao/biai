@@ -66,12 +66,6 @@ export class DatasetService {
     }
   }
 
-  private sanitizeConnectionSettings(settings: DatasetConnectionSettings | null) {
-    if (!settings) return null
-    const { host, port, protocol, username } = settings
-    return { host, port, protocol, username }
-  }
-
   private normalizeDisplayType(displayType?: string): string {
     return displayType || ''
   }
@@ -416,7 +410,7 @@ export class DatasetService {
     const columnValues = []
 
     for (const col of columnsToAdd) {
-        let columnType = col.type
+        let columnType: string = col.type
         if (col.isListColumn) {
           columnType = 'Array(String)'
         } else {
@@ -677,10 +671,10 @@ export class DatasetService {
         format: 'JSONEachRow'
       })
 
-      const tables = await tablesResult.json<{ name: string; engine: string; total_rows: string }>()
+      const tables = await tablesResult.json() as { name: string; engine: string; total_rows: string }[]
 
       let tablesWithSchema = await Promise.all(
-        tables.map(async (table) => {
+        tables.map(async (table: { name: string; engine: string; total_rows: string }) => {
           const columnsResult = await client.query({
             query: `
               SELECT name, type, position
@@ -693,8 +687,9 @@ export class DatasetService {
             format: 'JSONEachRow'
           })
 
-          const columns = await columnsResult.json<{ name: string; type: string; position: number }>()
-          const normalizedColumns = columns.map(col => ({
+          type NormalizedColumn = { name: string; type: string; nullable: boolean; position: number }
+          const columns = await columnsResult.json() as { name: string; type: string; position: number }[]
+          const normalizedColumns: NormalizedColumn[] = columns.map((col: { name: string; type: string; position: number }) => ({
             name: col.name,
             type: col.type.startsWith('Nullable(') && col.type.endsWith(')')
               ? col.type.slice(9, -1)
@@ -718,10 +713,10 @@ export class DatasetService {
                 nullable: col.nullable
               }))
             ),
-            primary_key: null,
+            primary_key: undefined,
             custom_metadata: '{}',
             relationships: [],
-            created_at: Math.floor(Date.now() / 1000)
+            created_at: new Date()
           }
 
           if (datasetId) {
@@ -896,7 +891,7 @@ export class DatasetService {
           query: `SELECT * FROM ${dataset.database_name}.${tableId} LIMIT ${limit} OFFSET ${offset}`,
           format: 'JSONEachRow'
         })
-        return await result.json<Record<string, unknown>>()
+        return await result.json() as Record<string, unknown>[]
       })
     }
 

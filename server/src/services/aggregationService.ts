@@ -1,5 +1,5 @@
 import clickhouseClient from '../config/clickhouse.js'
-import { escapeIdentifier, validateIdentifierFormat, ensurePositiveInteger } from '../utils/sqlSanitizer.js'
+import { escapeIdentifier } from '../utils/sqlSanitizer.js'
 
 const BASE_TABLE_ALIAS = 'base_table'
 
@@ -449,7 +449,7 @@ class AggregationService {
    */
   private buildParentExclusionSubquery(
     filter: Filter,
-    currentTableName: string,
+    _currentTableName: string,
     metricContext: MetricContext,
     currentTableClickhouseName: string
   ): string | null {
@@ -461,9 +461,9 @@ class AggregationService {
     const condition = this.buildFilterCondition(positiveFilter, BASE_TABLE_ALIAS)
     if (!condition) return null
 
-    // Get the parent foreign key column
-    // metricContext.joins[0] should have the foreign key from child to parent
-    const parentFk = metricContext.joins?.[0]?.foreignKey
+    // Get the parent foreign key column from path segments
+    // pathSegments[0].via_column has the foreign key from child to parent
+    const parentFk = metricContext.pathSegments?.[0]?.via_column
     if (!parentFk) return null
 
     const qualifiedTableName = this.qualifyTableName(currentTableClickhouseName)
@@ -1360,7 +1360,7 @@ class AggregationService {
           return metricContext.aliasByTable?.[tableName]
         }
       : undefined
-    const whereClause = this.buildWhereClause(filters, validColumns, effectiveTableName, tableMetadata, aliasResolver, metricContext, clickhouseTableName, listColumns)
+    const whereClause = this.buildWhereClause(filters, validColumns, effectiveTableName, tableMetadata, aliasResolver, metricContext, clickhouseTableName)
     const fromClause = this.buildFromClause(qualifiedTableName, metricContext)
 
     const timeExpr = `toFloat64(${this.columnRef(timeColumn)})`

@@ -6,7 +6,7 @@ vi.mock('../../config/clickhouse.js', () => ({
   }
 }))
 
-import aggregationService from '../aggregationService'
+import aggregationService, { type Filter } from '../aggregationService'
 import clickhouseClient from '../../config/clickhouse.js'
 
 const mockQuery = vi.mocked(clickhouseClient.query)

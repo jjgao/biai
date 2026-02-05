@@ -263,18 +263,15 @@ router.post('/:id/spreadsheets/preview', upload.single('file'), async (req, res)
 
     // Handle either file upload or URL
     let filePath: string
-    let filename: string
 
     if (fileUrl) {
       // Fetch file from URL
       tempFilePath = path.join('uploads', `preview_sheet_${uuidv4()}`)
       const fetchedFile = await fetchFileFromUrl(fileUrl, tempFilePath)
       filePath = fetchedFile.path
-      filename = fetchedFile.filename
     } else if (req.file) {
       // Use uploaded file
       filePath = req.file.path
-      filename = req.file.originalname
       tempFilePath = filePath
     } else {
       return res.status(400).json({ error: 'Either file upload or fileUrl is required' })
@@ -727,10 +724,10 @@ router.patch('/:id/tables/:tableId/primary-key', async (req, res) => {
     }
 
     await datasetService.updatePrimaryKey(req.params.id, req.params.tableId, primaryKey)
-    res.json({ success: true })
+    return res.json({ success: true })
   } catch (error: any) {
     console.error('Update primary key error:', error)
-    res.status(500).json({ error: 'Failed to update primary key', message: error.message })
+    return res.status(500).json({ error: 'Failed to update primary key', message: error.message })
   }
 })
 
@@ -750,10 +747,10 @@ router.post('/:id/tables/:tableId/relationships', async (req, res) => {
       type
     })
 
-    res.json({ success: true })
+    return res.json({ success: true })
   } catch (error: any) {
     console.error('Add relationship error:', error)
-    res.status(500).json({ error: 'Failed to add relationship', message: error.message })
+    return res.status(500).json({ error: 'Failed to add relationship', message: error.message })
   }
 })
 
@@ -776,10 +773,10 @@ router.delete('/:id/tables/:tableId/relationships', async (req, res) => {
       }
     )
 
-    res.json({ success: true })
+    return res.json({ success: true })
   } catch (error: any) {
     console.error('Delete relationship error:', error)
-    res.status(500).json({ error: 'Failed to delete relationship', message: error.message })
+    return res.status(500).json({ error: 'Failed to delete relationship', message: error.message })
   }
 })
 
