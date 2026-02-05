@@ -1014,8 +1014,15 @@ describe('AggregationService - countBy metrics', () => {
         {
           alias: 'ancestor_0',
           table: 'biai.patients_raw',
-          foreignKey: 'patient_id',
           on: 'base_table.patient_id = ancestor_0.patient_id'
+        }
+      ],
+      pathSegments: [
+        {
+          from_table: 'samples',
+          via_column: 'patient_id',
+          to_table: 'patients',
+          referenced_column: 'patient_id'
         }
       ]
     }
@@ -1054,8 +1061,15 @@ describe('AggregationService - countBy metrics', () => {
         {
           alias: 'ancestor_0',
           table: 'biai.patients_raw',
-          foreignKey: 'patient_id',
           on: 'base_table.patient_id = ancestor_0.patient_id'
+        }
+      ],
+      pathSegments: [
+        {
+          from_table: 'samples',
+          via_column: 'patient_id',
+          to_table: 'patients',
+          referenced_column: 'patient_id'
         }
       ]
     }
