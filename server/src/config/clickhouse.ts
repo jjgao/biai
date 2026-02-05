@@ -1,5 +1,6 @@
 import { createClient, ClickHouseClient, ClickHouseClientConfigOptions } from '@clickhouse/client'
 import dotenv from 'dotenv'
+import logger from '../utils/logger.js'
 
 dotenv.config()
 
@@ -45,12 +46,13 @@ export const testConnection = async () => {
       format: 'JSONEachRow',
     })
     const data = await result.json()
-    console.log('ClickHouse connection successful:', data)
+    logger.info('ClickHouse connection successful', { data })
     return true
   } catch (error) {
-    console.error('ClickHouse connection failed:', error)
+    logger.error('ClickHouse connection failed', error)
     return false
   }
 }
 
 export default clickhouseClient
+
