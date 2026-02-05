@@ -29,7 +29,7 @@ app.get('/health', (_req, res) => {
 dashboardService.initializeTable().then(() => {
   logger.info('Dashboard table initialized')
 }).catch(err => {
-  logger.error('Failed to initialize dashboard table', { error: err })
+  logger.error('Failed to initialize dashboard table', err)
 })
 
 app.listen(PORT, () => {

@@ -49,7 +49,7 @@ export const testConnection = async () => {
     logger.info('ClickHouse connection successful', { data })
     return true
   } catch (error) {
-    logger.error('ClickHouse connection failed', { error })
+    logger.error('ClickHouse connection failed', error)
     return false
   }
 }

@@ -18,12 +18,22 @@ export function requestLogger(req: Request, res: Response, next: NextFunction) {
     // Add request ID to request object for correlation
     req.requestId = requestId
 
+    // Redact sensitive query parameters
+    const sensitiveKeys = ['token', 'password', 'secret', 'key', 'authorization', 'auth']
+    const sanitizedQuery = { ...req.query } as Record<string, any>
+
+    Object.keys(sanitizedQuery).forEach(key => {
+        if (sensitiveKeys.some(s => key.toLowerCase().includes(s))) {
+            sanitizedQuery[key] = '[REDACTED]'
+        }
+    })
+
     // Log incoming request
     logger.info('Incoming request', {
         requestId,
         method: req.method,
         path: req.path,
-        query: req.query,
+        query: sanitizedQuery,
         ip: req.ip,
         userAgent: req.get('user-agent')
     })
@@ -31,9 +41,15 @@ export function requestLogger(req: Request, res: Response, next: NextFunction) {
     // Log response when finished
     res.on('finish', () => {
         const duration = Date.now() - startTime
-        const logLevel = res.statusCode >= 400 ? 'warn' : 'info'
+        let logLevel = 'info'
 
-        logger[logLevel]('Request completed', {
+        if (res.statusCode >= 500) {
+            logLevel = 'error'
+        } else if (res.statusCode >= 400) {
+            logLevel = 'warn'
+        }
+
+        logger.log(logLevel, 'Request completed', {
             requestId,
             method: req.method,
             path: req.path,
