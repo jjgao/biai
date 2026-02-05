@@ -123,6 +123,7 @@ describe('requestLogger middleware', () => {
         requestLogger(mockReq as Request, mockRes as Response, mockNext)
 
         expect(mockRes.on).toHaveBeenCalledWith('finish', expect.any(Function))
+        expect(finishHandler).not.toBeNull()
     })
 })
 
