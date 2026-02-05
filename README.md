@@ -7,7 +7,7 @@ A modern BI tool built with React, Node.js, ClickHouse, and Recharts.
 - **Frontend**: React + Vite + TypeScript
 - **Backend**: Node.js + Express + TypeScript
 - **Database**: ClickHouse
-- **Visualization**: Recharts
+- **Visualization**: Plotly.js
 
 ## Getting Started
 
@@ -102,6 +102,9 @@ For end-users working with the web interface:
 - `npm run dev:client` - Start frontend only
 - `npm run dev:server` - Start backend only
 - `npm run build` - Build both frontend and backend
+- `npm test` - Run all tests
+- `npm test --workspace=client` - Run client tests (105 tests)
+- `npm test --workspace=server` - Run server tests (252 tests)
 
 ## API Endpoints
 
@@ -168,13 +171,22 @@ The system uses ClickHouse with the following metadata tables:
 
 Data tables support Array(String) columns for storing list values.
 
-## Next Steps
+## Implemented Features (v0.01)
 
-- UI for filtering criteria; make it more human-readable; convert to the json format
-- Chatbot to generate filtering criteria
-- Allow selecting multiple values from the same chart in the UI
-- Allow AND/OR/NOT logic in the UI
-- Implement sessions so that the backend does not need to query database for every API request and additional filter can apply to the previous one
-- Adding genomics data
-- Adding a non-cBioPortal/genomic data
+- Multi-value selection from charts (OR logic within same column)
+- AND/OR/NOT logic for filters in the UI
+- Cross-table filtering with relationship propagation
+- Filter presets (save/load/share)
+- URL-based filter sharing
+- Spreadsheet import (Excel, ODS)
+- Database connectivity (connect to external ClickHouse)
+- Survival curve analysis
+- CI/CD pipeline with GitHub Actions
+
+## Roadmap
+
+- Chatbot integration for natural language queries
+- Session management for query optimization
+- Additional genomics data support
+- Extended data source connectors
 
