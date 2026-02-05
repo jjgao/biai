@@ -51,10 +51,10 @@ jobs:
 
       - name: Initialize ClickHouse database
         run: |
-          curl -sf "http://localhost:8123/" --data "CREATE DATABASE IF NOT EXISTS biai"
+          curl --fail "http://localhost:8123/" --data "CREATE DATABASE IF NOT EXISTS biai"
           for f in clickhouse/init/*.sql; do
             echo "Running $f..."
-            curl -sf "http://localhost:8123/?database=biai" --data-binary @"$f"
+            curl --fail "http://localhost:8123/?database=biai" --data-binary @"$f"
           done
 
       - name: Run server tests
