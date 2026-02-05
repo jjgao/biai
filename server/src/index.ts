@@ -5,6 +5,8 @@ import apiRoutes from './routes/api.js'
 import datasetsRoutes from './routes/datasets.js'
 import databasesRoutes from './routes/databases.js'
 import dashboardService from './services/dashboardService.js'
+import logger from './utils/logger.js'
+import { requestLogger } from './middleware/requestLogger.js'
 
 dotenv.config()
 
@@ -13,6 +15,7 @@ const PORT = process.env.PORT || 5001
 
 app.use(cors())
 app.use(express.json())
+app.use(requestLogger)
 
 app.use('/api', apiRoutes)
 app.use('/api/datasets', datasetsRoutes)
@@ -24,11 +27,12 @@ app.get('/health', (_req, res) => {
 
 // Initialize dashboard table
 dashboardService.initializeTable().then(() => {
-  console.log('Dashboard table initialized')
+  logger.info('Dashboard table initialized')
 }).catch(err => {
-  console.error('Failed to initialize dashboard table:', err)
+  logger.error('Failed to initialize dashboard table', { error: err })
 })
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
+  logger.info(`Server running on port ${PORT}`)
 })
+
