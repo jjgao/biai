@@ -1,10 +1,37 @@
 import winston from 'winston'
 import fs from 'fs'
 
-// Ensure logs directory exists
+// Build transports array
+const transports: winston.transport[] = [
+    new winston.transports.Console({
+        format: winston.format.combine(
+            winston.format.colorize(),
+            winston.format.printf(({ level, message, timestamp, ...meta }) => {
+                const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : ''
+                return `${timestamp} ${level}: ${message} ${metaStr}`
+            })
+        )
+    })
+]
+
+// Try to add file transports (may fail on read-only filesystems)
 const logDir = 'logs'
-if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir)
+try {
+    if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true })
+    }
+    transports.push(
+        new winston.transports.File({
+            filename: 'logs/error.log',
+            level: 'error'
+        }),
+        new winston.transports.File({
+            filename: 'logs/combined.log'
+        })
+    )
+} catch (err) {
+    // File logging disabled - running in read-only environment
+    console.warn('File logging disabled: unable to create logs directory')
 }
 
 const logger = winston.createLogger({
@@ -14,24 +41,8 @@ const logger = winston.createLogger({
         winston.format.errors({ stack: true }),
         winston.format.json()
     ),
-    transports: [
-        new winston.transports.Console({
-            format: winston.format.combine(
-                winston.format.colorize(),
-                winston.format.printf(({ level, message, timestamp, ...meta }) => {
-                    const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : ''
-                    return `${timestamp} ${level}: ${message} ${metaStr}`
-                })
-            )
-        }),
-        new winston.transports.File({
-            filename: 'logs/error.log',
-            level: 'error'
-        }),
-        new winston.transports.File({
-            filename: 'logs/combined.log'
-        })
-    ]
+    transports
 })
 
 export default logger
+

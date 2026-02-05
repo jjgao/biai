@@ -11,6 +11,27 @@ declare global {
     }
 }
 
+// Allowlist of safe query parameter keys to log
+// Any keys not in this list will have their values redacted
+const SAFE_QUERY_KEYS = new Set([
+    'limit', 'offset', 'page', 'sort', 'order', 'format',
+    'table', 'column', 'dataset', 'chart', 'type', 'view'
+])
+
+function sanitizeQuery(query: Record<string, any>): Record<string, any> {
+    const sanitized: Record<string, any> = {}
+
+    for (const [key, value] of Object.entries(query)) {
+        if (SAFE_QUERY_KEYS.has(key.toLowerCase())) {
+            sanitized[key] = value
+        } else {
+            sanitized[key] = '[REDACTED]'
+        }
+    }
+
+    return sanitized
+}
+
 export function requestLogger(req: Request, res: Response, next: NextFunction) {
     const requestId = uuidv4()
     const startTime = Date.now()
@@ -18,23 +39,15 @@ export function requestLogger(req: Request, res: Response, next: NextFunction) {
     // Add request ID to request object for correlation
     req.requestId = requestId
 
-    // Redact sensitive query parameters
-    const sensitiveKeys = ['token', 'password', 'secret', 'key', 'authorization', 'auth']
-    const sanitizedQuery = { ...req.query } as Record<string, any>
+    // Add request ID to response header for client correlation
+    res.setHeader('X-Request-Id', requestId)
 
-    Object.keys(sanitizedQuery).forEach(key => {
-        if (sensitiveKeys.some(s => key.toLowerCase().includes(s))) {
-            sanitizedQuery[key] = '[REDACTED]'
-        }
-    })
-
-    // Log incoming request
+    // Log incoming request with sanitized query
     logger.info('Incoming request', {
         requestId,
         method: req.method,
         path: req.path,
-        query: sanitizedQuery,
-        ip: req.ip,
+        query: sanitizeQuery(req.query as Record<string, any>),
         userAgent: req.get('user-agent')
     })
 
@@ -60,3 +73,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction) {
 
     next()
 }
+
+// Export for testing
+export { sanitizeQuery, SAFE_QUERY_KEYS }
+
