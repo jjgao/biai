@@ -2,14 +2,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Request, Response, NextFunction } from 'express'
 import { requestLogger, sanitizeQuery, SAFE_QUERY_KEYS } from '../requestLogger.js'
 
+// Use vi.hoisted to create mock logger before module is loaded
+const mockLogger = vi.hoisted(() => ({
+    info: vi.fn(),
+    log: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn()
+}))
+
 // Mock the logger
 vi.mock('../../utils/logger.js', () => ({
-    default: {
-        info: vi.fn(),
-        log: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn()
-    }
+    default: mockLogger
 }))
 
 // Mock uuid
@@ -50,7 +53,7 @@ describe('sanitizeQuery', () => {
 
     it('should handle empty query', () => {
         const result = sanitizeQuery({})
-        expect(result).toEqual({})
+        expect(Object.keys(result).length).toBe(0)
     })
 
     it('should be case-insensitive for safe keys', () => {
@@ -65,6 +68,36 @@ describe('sanitizeQuery', () => {
         expect(result.LIMIT).toBe('10')
         expect(result.Offset).toBe('5')
         expect(result.PAGE).toBe('2')
+    })
+
+    it('should skip prototype pollution keys', () => {
+        const query = {
+            limit: '10',
+            __proto__: 'malicious',
+            constructor: 'attack',
+            prototype: 'exploit'
+        }
+
+        const result = sanitizeQuery(query)
+
+        expect(result.limit).toBe('10')
+        expect('__proto__' in result).toBe(false)
+        expect('constructor' in result).toBe(false)
+        expect('prototype' in result).toBe(false)
+    })
+
+    it('should mark non-string values as [NON-STRING]', () => {
+        const query = {
+            limit: ['10', '20'],
+            offset: { nested: 'object' },
+            page: '1'
+        }
+
+        const result = sanitizeQuery(query)
+
+        expect(result.limit).toBe('[NON-STRING]')
+        expect(result.offset).toBe('[NON-STRING]')
+        expect(result.page).toBe('1')
     })
 })
 
@@ -125,6 +158,33 @@ describe('requestLogger middleware', () => {
         expect(mockRes.on).toHaveBeenCalledWith('finish', expect.any(Function))
         expect(finishHandler).not.toBeNull()
     })
+
+    it('should log at info level for 2xx status codes', () => {
+        mockRes.statusCode = 200
+        requestLogger(mockReq as Request, mockRes as Response, mockNext)
+
+        finishHandler!()
+
+        expect(mockLogger.log).toHaveBeenCalledWith('info', 'Request completed', expect.any(Object))
+    })
+
+    it('should log at warn level for 4xx status codes', () => {
+        mockRes.statusCode = 404
+        requestLogger(mockReq as Request, mockRes as Response, mockNext)
+
+        finishHandler!()
+
+        expect(mockLogger.log).toHaveBeenCalledWith('warn', 'Request completed', expect.any(Object))
+    })
+
+    it('should log at error level for 5xx status codes', () => {
+        mockRes.statusCode = 500
+        requestLogger(mockReq as Request, mockRes as Response, mockNext)
+
+        finishHandler!()
+
+        expect(mockLogger.log).toHaveBeenCalledWith('error', 'Request completed', expect.any(Object))
+    })
 })
 
 describe('SAFE_QUERY_KEYS', () => {
@@ -136,3 +196,4 @@ describe('SAFE_QUERY_KEYS', () => {
         }
     })
 })
+

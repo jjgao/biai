@@ -18,12 +18,26 @@ const SAFE_QUERY_KEYS = new Set([
     'table', 'column', 'dataset', 'chart', 'type', 'view'
 ])
 
-function sanitizeQuery(query: Record<string, any>): Record<string, any> {
-    const sanitized: Record<string, any> = {}
+// Reserved keys to skip (prototype pollution prevention)
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
+function sanitizeQuery(query: Record<string, any>): Record<string, string> {
+    // Use null prototype to prevent prototype pollution
+    const sanitized: Record<string, string> = Object.create(null)
 
     for (const [key, value] of Object.entries(query)) {
+        // Skip reserved keys
+        if (RESERVED_KEYS.has(key)) {
+            continue
+        }
+
         if (SAFE_QUERY_KEYS.has(key.toLowerCase())) {
-            sanitized[key] = value
+            // Only log primitive string values
+            if (typeof value === 'string') {
+                sanitized[key] = value
+            } else {
+                sanitized[key] = '[NON-STRING]'
+            }
         } else {
             sanitized[key] = '[REDACTED]'
         }
