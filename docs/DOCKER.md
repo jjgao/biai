@@ -117,7 +117,7 @@ The `.env.production` file controls all deployment settings:
 |----------|-------------|---------|
 | `CLICKHOUSE_DATABASE` | Database name | `biai` |
 | `CLICKHOUSE_USER` | Database user | `biai` |
-| `CLICKHOUSE_PASSWORD` | Database password | `biai_prod_password` |
+| `CLICKHOUSE_PASSWORD` | Database password | `CHANGE_ME_IN_PRODUCTION` |
 | `LOG_LEVEL` | Server log level | `info` |
 | `CLIENT_PORT` | Host port for the app | `80` |
 

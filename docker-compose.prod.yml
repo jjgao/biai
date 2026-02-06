@@ -8,13 +8,13 @@ services:
     environment:
       - CLICKHOUSE_DB=${CLICKHOUSE_DATABASE:-biai}
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-biai}
-      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-biai_prod_password}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-CHANGE_ME_IN_PRODUCTION}
       - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
     networks:
       - biai-network
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "clickhouse-client", "--user", "${CLICKHOUSE_USER:-biai}", "--password", "${CLICKHOUSE_PASSWORD:-biai_prod_password}", "--query", "SELECT 1" ]
+      test: [ "CMD", "clickhouse-client", "--user", "${CLICKHOUSE_USER:-biai}", "--password", "${CLICKHOUSE_PASSWORD:-CHANGE_ME_IN_PRODUCTION}", "--query", "SELECT 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -32,7 +32,7 @@ services:
       - CLICKHOUSE_HOST=http://clickhouse:8123
       - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE:-biai}
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-biai}
-      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-biai_prod_password}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-CHANGE_ME_IN_PRODUCTION}
       - PORT=5001
       - LOG_LEVEL=${LOG_LEVEL:-info}
     networks:
