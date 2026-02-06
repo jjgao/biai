@@ -27,12 +27,12 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-    env_file:
-      - .env.production
     environment:
       - NODE_ENV=production
-      - CLICKHOUSE_HOST=http://${CLICKHOUSE_USER:-biai}:${CLICKHOUSE_PASSWORD:-biai_prod_password}@clickhouse:8123
+      - CLICKHOUSE_HOST=http://clickhouse:8123
       - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE:-biai}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-biai}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-biai_prod_password}
       - PORT=5001
       - LOG_LEVEL=${LOG_LEVEL:-info}
     networks:

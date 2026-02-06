@@ -11,7 +11,17 @@ This guide explains how to deploy the BIAI application using Docker containers.
 
 ## Quick Start
 
-### 1. Build and Deploy
+### 1. Configure Environment
+
+```bash
+# Create production config from example
+cp .env.production.example .env.production
+
+# Edit with your values (especially passwords!)
+nano .env.production
+```
+
+### 2. Build and Deploy
 
 ```bash
 # Build Docker images
@@ -21,7 +31,7 @@ This guide explains how to deploy the BIAI application using Docker containers.
 ./scripts/deploy.sh
 ```
 
-### 2. Access the Application
+### 3. Access the Application
 
 Open http://localhost in your browser.
 
@@ -81,32 +91,37 @@ Open http://localhost in your browser.
 ### View Logs
 ```bash
 # All services
-docker compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml --env-file .env.production logs -f
 
 # Specific service
-docker compose -f docker-compose.prod.yml logs -f server
-docker compose -f docker-compose.prod.yml logs -f client
-docker compose -f docker-compose.prod.yml logs -f clickhouse
+docker compose -f docker-compose.prod.yml --env-file .env.production logs -f server
+docker compose -f docker-compose.prod.yml --env-file .env.production logs -f client
+docker compose -f docker-compose.prod.yml --env-file .env.production logs -f clickhouse
 ```
 
 ### Check Status
 ```bash
-docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml --env-file .env.production ps
 ```
 
 ### Restart Services
 ```bash
-docker compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.prod.yml --env-file .env.production restart
 ```
 
 ## Environment Configuration
 
-Create a `.env.production` file based on `.env.production.example`:
+The `.env.production` file controls all deployment settings:
 
-```bash
-cp .env.production.example .env.production
-# Edit .env.production with your values
-```
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CLICKHOUSE_DATABASE` | Database name | `biai` |
+| `CLICKHOUSE_USER` | Database user | `biai` |
+| `CLICKHOUSE_PASSWORD` | Database password | `biai_prod_password` |
+| `LOG_LEVEL` | Server log level | `info` |
+| `CLIENT_PORT` | Host port for the app | `80` |
+
+**Important:** Change `CLICKHOUSE_PASSWORD` for production deployments!
 
 ## Volumes
 
@@ -123,10 +138,11 @@ docker run --rm -v biai_clickhouse_data:/data -v $(pwd):/backup alpine \
 ## Production Considerations
 
 ### Security
-- Use specific image versions (not `latest`)
+- ✅ Images use pinned versions (node:20-alpine, nginx:1.27-alpine, clickhouse:24.3.4)
+- ✅ Non-root users in containers
+- ✅ ClickHouse authentication enabled
 - Configure TLS/HTTPS (use a reverse proxy like Traefik or Caddy)
-- Set up proper secrets management
-- Use Docker secrets for sensitive data
+- Use Docker secrets for sensitive data in orchestrated environments
 
 ### Monitoring
 - Container health checks are configured
@@ -142,13 +158,14 @@ docker run --rm -v biai_clickhouse_data:/data -v $(pwd):/backup alpine \
 
 ### Container won't start
 ```bash
-docker compose -f docker-compose.prod.yml logs <service>
+docker compose -f docker-compose.prod.yml --env-file .env.production logs <service>
 ```
 
 ### Database connection issues
 Check if ClickHouse is healthy:
 ```bash
-docker compose -f docker-compose.prod.yml exec clickhouse clickhouse-client --query "SELECT 1"
+docker compose -f docker-compose.prod.yml --env-file .env.production exec clickhouse \
+  clickhouse-client --user biai --password <your-password> --query "SELECT 1"
 ```
 
 ### Port already in use
@@ -156,6 +173,20 @@ docker compose -f docker-compose.prod.yml exec clickhouse clickhouse-client --qu
 # Find process using port 80
 lsof -i :80
 
-# Use a different port
-# Edit docker-compose.prod.yml, change "80:80" to "8080:80"
+# Use a different port by editing .env.production
+CLIENT_PORT=8080
+```
+
+### Smoke tests fail
+The deploy script runs automated smoke tests. If they fail:
+```bash
+# Check server logs
+docker compose -f docker-compose.prod.yml --env-file .env.production logs server
+
+# Check client logs
+docker compose -f docker-compose.prod.yml --env-file .env.production logs client
+
+# Test manually
+curl http://localhost/health
+curl http://localhost/api/datasets
 ```
