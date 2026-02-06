@@ -1,5 +1,7 @@
 # BIAI - Business Intelligence AI
 
+[![Test & Build](https://github.com/jjgao/biai/actions/workflows/test.yml/badge.svg)](https://github.com/jjgao/biai/actions/workflows/test.yml)
+
 A modern BI tool built with React, Node.js, ClickHouse, and Recharts.
 
 ## Tech Stack
