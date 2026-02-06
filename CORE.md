@@ -30,9 +30,12 @@ biai/
 │       ├── services/       # Business logic
 │       │   ├── aggregationService.ts  # SQL generation, filtering
 │       │   ├── datasetService.ts      # Dataset CRUD
+│       │   ├── dashboardService.ts    # Dashboard persistence
 │       │   ├── fileParser.ts          # CSV parsing
-│       │   └── columnAnalyzer.ts      # Type inference
-│       ├── utils/          # Helpers (listParser, etc.)
+│       │   ├── spreadsheetParser.ts   # Excel/ODS import
+│       │   ├── columnAnalyzer.ts      # Type inference
+│       │   └── metadataParser.ts      # .meta file parsing
+│       ├── utils/          # Helpers (sqlSanitizer, urlFetcher, etc.)
 │       └── config/         # ClickHouse connection
 ├── clickhouse/             # Database setup
 │   ├── init/              # Schema initialization
@@ -161,15 +164,20 @@ export const fetchSomething = async (id: string) => {
 | `server/src/services/aggregationService.ts` | SQL query generation | Complex, handles all filtering logic |
 | `server/src/services/datasetService.ts` | Dataset CRUD operations | Table creation, data insertion |
 | `server/src/services/fileParser.ts` | CSV parsing | Delimiter detection, list parsing |
-| `client/src/pages/DatasetExplorer.tsx` | Main exploration UI | 6K lines, needs refactoring |
+| `server/src/services/dashboardService.ts` | Dashboard persistence | Save/load/delete dashboards |
+| `server/src/services/spreadsheetParser.ts` | Excel/ODS import | Multi-sheet support |
+| `server/src/utils/sqlSanitizer.ts` | SQL injection prevention | Column/table name validation |
+| `client/src/pages/DatasetExplorer.tsx` | Main exploration UI | 6K+ lines, needs refactoring (#92) |
 | `client/src/pages/DatasetManage.tsx` | Upload/config UI | Dataset and table management |
+| `client/src/utils/filterHelpers.ts` | Filter logic | Relationship pathfinding, propagation |
 | `clickhouse/init/01-init.sql` | Database schema | 4 metadata tables |
 
 ## Known Issues & Technical Debt
 
-1. **Large Component** (#92) - `DatasetExplorer.tsx` is 6,274 lines
-2. **No CI/CD** (#89) - Tests don't run automatically
-3. **Type Duplication** (#94) - Same types defined in client and server
+1. **Large Component** (#92) - `DatasetExplorer.tsx` is 6K+ lines; refactoring planned (#119-#123)
+2. **Type Duplication** (#94) - Same types defined in client and server
+3. **Missing E2E Tests** (#95) - No end-to-end tests for critical workflows
+4. **No OpenAPI Docs** (#93) - API endpoints lack formal specification
 
 ## Debugging Tips
 
