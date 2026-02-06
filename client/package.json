@@ -1,6 +1,6 @@
 {
   "name": "client",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,8 +11,6 @@
     "test:ui": "vitest --ui"
   },
   "dependencies": {
-    "@types/dompurify": "^3.0.5",
-    "@types/plotly.js": "^3.0.6",
     "axios": "^1.7.7",
     "dompurify": "^3.2.7",
     "plotly.js": "^3.1.1",
@@ -24,6 +22,8 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
+    "@types/dompurify": "^3.0.5",
+    "@types/plotly.js": "^3.0.6",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^5.1.2",
@@ -34,7 +34,6 @@
     "vitest": "^3.2.4"
   },
   "description": "BIAI Frontend - React-based UI for Business Intelligence AI",
-  "main": "index.js",
   "keywords": [],
   "author": "",
   "license": "MIT"

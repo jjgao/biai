@@ -3,6 +3,8 @@
 ## Purpose
 This checklist ensures no regressions occur when refactoring the Dataset Explorer layout from sections to tabs, and when adding the dashboard feature.
 
+> **Note:** The "Before Refactor" section reflects the current UI as of v0.1. The "After Phase 1" and "After Phase 2" sections describe planned features from the DatasetExplorer refactoring epic (#92, #119-#123) and are aspirational.
+
 ---
 
 ## Before Refactor (Baseline) - Section Layout

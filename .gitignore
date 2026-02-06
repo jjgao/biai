@@ -42,4 +42,6 @@ clickhouse-data/
 
 # TypeScript
 *.tsbuildinfo
+
+# Production secrets
 .env.production

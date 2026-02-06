@@ -2,7 +2,7 @@
 
 [![Test & Build](https://github.com/jjgao/biai/actions/workflows/test.yml/badge.svg)](https://github.com/jjgao/biai/actions/workflows/test.yml)
 
-A modern BI tool built with React, Node.js, ClickHouse, and Recharts.
+A modern BI tool built with React, Node.js, ClickHouse, and Plotly.js.
 
 ## Tech Stack
 
@@ -51,14 +51,18 @@ This will start:
 biai/
 ├── client/                     # React frontend
 │   ├── src/
-│   │   ├── pages/             # Dataset management, Dashboard, Reports
+│   │   ├── pages/             # Main views (DatasetExplorer, DatasetManage, etc.)
+│   │   ├── components/        # Reusable UI (ErrorBoundary, SafeHtml)
 │   │   ├── services/          # API client
+│   │   ├── utils/             # Filter helpers, URL state, preset management
+│   │   ├── types/             # TypeScript definitions
 │   │   └── main.tsx           # App entry point
 │   └── package.json
 ├── server/                     # Node.js backend
 │   ├── src/
 │   │   ├── routes/            # API endpoints (datasets, queries)
-│   │   ├── services/          # Business logic (datasetService, fileParser, metadataParser)
+│   │   ├── services/          # Business logic (aggregation, datasets, file parsing)
+│   │   ├── utils/             # Helpers (SQL sanitization, URL fetcher)
 │   │   └── config/            # ClickHouse configuration
 │   └── package.json
 ├── clickhouse/                 # ClickHouse initialization scripts
@@ -115,9 +119,30 @@ For end-users working with the web interface:
 - `GET /api/datasets` - List all datasets
 - `GET /api/datasets/:id` - Get dataset details
 - `DELETE /api/datasets/:id` - Delete dataset
+
+### Tables
 - `POST /api/datasets/:id/tables` - Add table to dataset
 - `GET /api/datasets/:id/tables/:tableId/data` - Get table data
+- `GET /api/datasets/:id/tables/:tableId/columns` - Get column metadata
+- `PATCH /api/datasets/:id/tables/:tableId/primary-key` - Update primary key
+- `PATCH /api/datasets/:id/tables/:tableId/columns/:col` - Update column metadata
 - `DELETE /api/datasets/:id/tables/:tableId` - Delete table
+- `POST /api/datasets/:id/import-spreadsheet` - Import spreadsheet (Excel/ODS)
+
+### Relationships
+- `POST /api/datasets/:id/tables/:tableId/relationships` - Add relationship
+- `DELETE /api/datasets/:id/tables/:tableId/relationships` - Remove relationship
+
+### Aggregations & Analysis
+- `GET /api/datasets/:id/tables/:tableId/aggregations` - Get table aggregations
+- `GET /api/datasets/:id/tables/:tableId/columns/:col/aggregation` - Get column aggregation
+- `GET /api/datasets/:id/tables/:tableId/survival` - Get survival curve data
+
+### Dashboards
+- `GET /api/datasets/:id/dashboards` - List dashboards
+- `GET /api/datasets/:id/dashboards/:dashboardId` - Get dashboard
+- `POST /api/datasets/:id/dashboards` - Save/update dashboard
+- `DELETE /api/datasets/:id/dashboards/:dashboardId` - Delete dashboard
 
 ### System
 - `GET /health` - Health check
@@ -173,22 +198,35 @@ The system uses ClickHouse with the following metadata tables:
 
 Data tables support Array(String) columns for storing list values.
 
-## Implemented Features (v0.01)
+## Implemented Features (v0.1)
 
 - Multi-value selection from charts (OR logic within same column)
 - AND/OR/NOT logic for filters in the UI
-- Cross-table filtering with relationship propagation
-- Filter presets (save/load/share)
+- Cross-table filtering with relationship propagation (multi-hop)
+- Filter presets (save/load/share/export/import)
 - URL-based filter sharing
-- Spreadsheet import (Excel, ODS)
-- Database connectivity (connect to external ClickHouse)
-- Survival curve analysis
+- Spreadsheet import (Excel, ODS with multi-sheet support)
+- Database connectivity (connect to external ClickHouse instances)
+- Survival curve analysis (Kaplan-Meier)
+- Dashboard system (save/load chart layouts)
+- Geographic map visualization
 - CI/CD pipeline with GitHub Actions
+- Containerized deployment (Docker Compose for development and production)
+- Request logging with Winston
+- React Error Boundary for graceful error handling
+
+## Deployment
+
+For production deployment with Docker, see [Docker Guide](docs/DOCKER.md).
 
 ## Roadmap
 
 - Chatbot integration for natural language queries
-- Session management for query optimization
+- 2-variable charts for cross-column analysis (#102)
+- Frontend-only mode with DuckDB-WASM (#105)
+- DatasetExplorer component refactoring (#92)
+- OpenAPI/Swagger documentation (#93)
+- End-to-end testing (#95)
 - Additional genomics data support
 - Extended data source connectors
 
