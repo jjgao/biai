@@ -7,6 +7,8 @@ dotenv.config()
 const clickhouseClient = createClient({
   url: process.env.CLICKHOUSE_HOST || 'http://localhost:8123',
   database: process.env.CLICKHOUSE_DATABASE || 'biai',
+  username: process.env.CLICKHOUSE_USER || 'default',
+  password: process.env.CLICKHOUSE_PASSWORD || '',
 })
 
 export interface ClickHouseConnectionSettings {
