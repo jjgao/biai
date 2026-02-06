@@ -3,11 +3,11 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files (use npm install since no package-lock in workspace)
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -26,13 +26,13 @@ RUN addgroup -g 1001 -S nodejs && \
 
 # Copy package files and install production dependencies only
 COPY package*.json ./
-RUN npm ci --production && npm cache clean --force
+RUN npm install --production && npm cache clean --force
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Create logs directory with proper permissions
-RUN mkdir -p logs && chown -R nodejs:nodejs logs
+# Create required directories with proper permissions
+RUN mkdir -p logs uploads && chown -R nodejs:nodejs logs uploads
 
 # Switch to non-root user
 USER nodejs
