@@ -70,6 +70,13 @@ export function parseMetadataFile(content: string): Record<string, any> {
 
     // Check if this is an array item
     if (trimmedLine.startsWith('-')) {
+      if (!inArray && currentKey) {
+        // First array item — switch from object to array mode
+        inArray = true
+        inObject = false
+        currentArray = []
+        baseIndent = indent
+      }
       if (inArray && currentKey) {
         currentArray.push(trimmedLine.substring(1).trim())
       }
@@ -162,6 +169,21 @@ export function parseTableMetadata(content: string): TableMetadata {
   // Parse relationships if present
   if (raw.relationships) {
     metadata.relationships = parseRelationships(raw.relationships)
+  } else if (raw.relationship && typeof raw.relationship === 'object') {
+    // Singular nested object format:
+    // relationship:
+    //   foreign_key: patient_id
+    //   references_table: patients
+    //   references_column: patient_id
+    //   type: many-to-one
+    const rel = raw.relationship
+    if (rel.foreign_key && rel.references_table && rel.references_column) {
+      metadata.relationships = [{
+        foreign_key: rel.foreign_key,
+        references: `${rel.references_table}(${rel.references_column})`,
+        type: rel.type || 'many-to-one'
+      }]
+    }
   } else if (raw.foreign_key) {
     // Support single foreign_key field format
     metadata.relationships = [parseRelationshipString(raw.foreign_key, raw.references)]
