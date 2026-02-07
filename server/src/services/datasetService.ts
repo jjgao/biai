@@ -1366,6 +1366,20 @@ export class DatasetService {
     }
   }
 
+
+  async updateDatasetTimestamp(datasetId: string): Promise<void> {
+    // Update ClickHouse
+    await clickhouseClient.command({
+      query: `
+        ALTER TABLE biai.datasets_metadata
+        UPDATE updated_at = now()
+        WHERE dataset_id = {datasetId:String}
+        SETTINGS mutations_sync = 1
+      `,
+      query_params: { datasetId }
+    })
+  }
+
   async deleteDataset(datasetId: string): Promise<void> {
     const dataset = await this.getDataset(datasetId)
     if (!dataset) {

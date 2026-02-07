@@ -754,14 +754,33 @@ router.get('/:id/tables/:tableId/columns', async (req, res) => {
 })
 
 // Update table metadata (e.g. rename)
+// Update table metadata (e.g. rename)
 router.patch('/:id/tables/:tableId', async (req, res) => {
   try {
+    const { id: datasetId, tableId } = req.params
     const { displayName } = req.body
 
+    // Validate inputs
+    if (displayName !== undefined) {
+      if (typeof displayName !== 'string' || displayName.trim().length === 0) {
+        return res.status(400).json({ error: 'Display name must be a non-empty string' })
+      }
+    }
+
+    // Check if table exists
+    const tables = await datasetService.getDatasetTables(datasetId)
+    const tableExists = tables.some(t => t.table_id === tableId)
+    if (!tableExists) {
+      return res.status(404).json({ error: 'Table not found' })
+    }
+
     if (displayName) {
-      await datasetService.updateTableMetadata(req.params.id, req.params.tableId, {
-        displayName
+      await datasetService.updateTableMetadata(datasetId, tableId, {
+        displayName: displayName.trim()
       })
+
+      // Update dataset update timestamp
+      await datasetService.updateDatasetTimestamp(datasetId)
     }
 
     return res.json({ success: true, message: 'Table metadata updated' })
