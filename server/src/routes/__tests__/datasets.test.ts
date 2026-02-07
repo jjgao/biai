@@ -49,7 +49,10 @@ vi.mock('../../services/datasetService.js', () => ({
     connectDatabase: vi.fn(),
     getTableColumns: vi.fn(),
     updateColumnMetadata: vi.fn(),
-    deleteDataset: vi.fn()
+    deleteDataset: vi.fn(),
+    getDatasetTables: vi.fn(),
+    updateTableMetadata: vi.fn(),
+    updateDatasetTimestamp: vi.fn()
   }
 }))
 
@@ -69,6 +72,9 @@ const mockConnectDatabase = vi.mocked(datasetService.connectDatabase)
 const mockGetTableColumns = vi.mocked(datasetService.getTableColumns)
 const mockUpdateColumnMetadata = vi.mocked(datasetService.updateColumnMetadata)
 const mockDeleteDataset = vi.mocked(datasetService.deleteDataset)
+const mockGetDatasetTables = vi.mocked(datasetService.getDatasetTables)
+const mockUpdateTableMetadata = vi.mocked(datasetService.updateTableMetadata)
+const mockUpdateDatasetTimestamp = vi.mocked(datasetService.updateDatasetTimestamp)
 
 const app = express()
 app.use(express.json())
@@ -656,6 +662,88 @@ describe('Datasets API Routes', () => {
       expect(response.status).toBe(500)
       expect(response.body.error).toBe('Failed to import from path')
       expect(response.body.message).toBe('Directory not found')
+    })
+  })
+
+  describe('PATCH /api/datasets/:id/tables/:tableId', () => {
+    const datasetId = 'ds-1'
+    const tableId = 'tbl-1'
+
+    test('should rename table with valid displayName', async () => {
+      mockGetDatasetTables.mockResolvedValue([{ table_id: tableId }] as any)
+      mockUpdateTableMetadata.mockResolvedValue(undefined)
+      mockUpdateDatasetTimestamp.mockResolvedValue(undefined)
+
+      const response = await request(app)
+        .patch(`/api/datasets/${datasetId}/tables/${tableId}`)
+        .send({ displayName: 'New Name' })
+
+      expect(response.status).toBe(200)
+      expect(response.body.success).toBe(true)
+      expect(mockUpdateTableMetadata).toHaveBeenCalledWith(datasetId, tableId, { displayName: 'New Name' })
+      expect(mockUpdateDatasetTimestamp).toHaveBeenCalledWith(datasetId)
+    })
+
+    test('should return 400 for empty displayName', async () => {
+      const response = await request(app)
+        .patch(`/api/datasets/${datasetId}/tables/${tableId}`)
+        .send({ displayName: '' })
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toBe('Display name must be a non-empty string')
+    })
+
+    test('should return 400 for whitespace-only displayName', async () => {
+      const response = await request(app)
+        .patch(`/api/datasets/${datasetId}/tables/${tableId}`)
+        .send({ displayName: '   ' })
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toBe('Display name must be a non-empty string')
+    })
+
+    test('should return 400 for non-string displayName', async () => {
+      const response = await request(app)
+        .patch(`/api/datasets/${datasetId}/tables/${tableId}`)
+        .send({ displayName: 123 })
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toBe('Display name must be a non-empty string')
+    })
+
+    test('should return 404 for non-existent table', async () => {
+      mockGetDatasetTables.mockResolvedValue([])
+
+      const response = await request(app)
+        .patch(`/api/datasets/${datasetId}/tables/${tableId}`)
+        .send({ displayName: 'New Name' })
+
+      expect(response.status).toBe(404)
+      expect(response.body.error).toBe('Table not found')
+    })
+
+    test('should return success when no fields to update', async () => {
+      mockGetDatasetTables.mockResolvedValue([{ table_id: tableId }] as any)
+
+      const response = await request(app)
+        .patch(`/api/datasets/${datasetId}/tables/${tableId}`)
+        .send({})
+
+      expect(response.status).toBe(200)
+      expect(response.body.success).toBe(true)
+      expect(mockUpdateTableMetadata).not.toHaveBeenCalled()
+    })
+
+    test('should return 500 on service error', async () => {
+      mockGetDatasetTables.mockResolvedValue([{ table_id: tableId }] as any)
+      mockUpdateTableMetadata.mockRejectedValue(new Error('DB error'))
+
+      const response = await request(app)
+        .patch(`/api/datasets/${datasetId}/tables/${tableId}`)
+        .send({ displayName: 'New Name' })
+
+      expect(response.status).toBe(500)
+      expect(response.body.error).toBe('Failed to update table metadata')
     })
   })
 

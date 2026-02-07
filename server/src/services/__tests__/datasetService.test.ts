@@ -500,4 +500,41 @@ describe('DatasetService', () => {
       query: expect.stringContaining('ALTER TABLE biai.table_relationships')
     }))
   })
+
+  test('updateTableMetadata updates display_name with mutations_sync', async () => {
+    commandMock.mockResolvedValue(undefined)
+
+    await datasetService.updateTableMetadata('dataset-1', 'table-1', {
+      displayName: 'New Display Name'
+    })
+
+    expect(commandMock).toHaveBeenCalledWith(expect.objectContaining({
+      query: expect.stringContaining('ALTER TABLE biai.dataset_tables'),
+      query_params: {
+        datasetId: 'dataset-1',
+        tableId: 'table-1',
+        displayName: 'New Display Name'
+      }
+    }))
+    expect(commandMock.mock.calls[0][0].query).toContain('mutations_sync = 1')
+  })
+
+  test('updateTableMetadata does nothing when no displayName provided', async () => {
+    await datasetService.updateTableMetadata('dataset-1', 'table-1', {})
+
+    expect(commandMock).not.toHaveBeenCalled()
+  })
+
+  test('updateDatasetTimestamp updates updated_at with mutations_sync', async () => {
+    commandMock.mockResolvedValue(undefined)
+
+    await datasetService.updateDatasetTimestamp('dataset-1')
+
+    expect(commandMock).toHaveBeenCalledWith(expect.objectContaining({
+      query: expect.stringContaining('ALTER TABLE biai.datasets_metadata'),
+      query_params: { datasetId: 'dataset-1' }
+    }))
+    expect(commandMock.mock.calls[0][0].query).toContain('updated_at = now()')
+    expect(commandMock.mock.calls[0][0].query).toContain('mutations_sync = 1')
+  })
 })
