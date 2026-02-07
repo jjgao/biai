@@ -92,6 +92,63 @@ export async function apiDeleteDataset(datasetId: string): Promise<void> {
   if (!res.ok) throw new Error(`Delete dataset failed: ${res.status}`)
 }
 
+export async function apiListDatabases(options: {
+  host: string
+  port?: number
+  secure?: boolean
+  username?: string
+  password?: string
+}): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/databases/list`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options)
+  })
+  if (!res.ok) {
+    const errBody = await res.text()
+    throw new Error(`List databases failed: ${res.status} - ${errBody}`)
+  }
+  const data = await res.json()
+  return (data.databases || []).map((db: { name: string }) => db.name)
+}
+
+export async function apiConnectDatabase(options: {
+  databaseName: string
+  displayName: string
+  description?: string
+  host: string
+  port?: number
+  secure?: boolean
+  username?: string
+  password?: string
+}): Promise<{ datasetId: string; name: string }> {
+  const res = await fetch(`${API_BASE}/datasets/connect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options)
+  })
+  if (!res.ok) {
+    const errBody = await res.text()
+    throw new Error(`Connect database failed: ${res.status} - ${errBody}`)
+  }
+  const data = await res.json()
+  return { datasetId: data.dataset.id, name: data.dataset.name }
+}
+
+export async function apiImportFromPath(path: string): Promise<DatasetInfo> {
+  const res = await fetch(`${API_BASE}/datasets/import-from-path`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path })
+  })
+  if (!res.ok) {
+    const errBody = await res.text()
+    throw new Error(`Import from path failed: ${res.status} - ${errBody}`)
+  }
+  const data = await res.json()
+  return { datasetId: data.datasetId, name: data.datasetName }
+}
+
 export async function apiAddRelationship(
   datasetId: string,
   tableId: string,
@@ -121,6 +178,9 @@ type TestFixtures = {
     uploadCSV: typeof apiUploadCSV
     deleteDataset: typeof apiDeleteDataset
     addRelationship: typeof apiAddRelationship
+    listDatabases: typeof apiListDatabases
+    connectDatabase: typeof apiConnectDatabase
+    importFromPath: typeof apiImportFromPath
   }
 }
 
@@ -130,7 +190,10 @@ export const test = base.extend<TestFixtures>({
       createDataset: apiCreateDataset,
       uploadCSV: apiUploadCSV,
       deleteDataset: apiDeleteDataset,
-      addRelationship: apiAddRelationship
+      addRelationship: apiAddRelationship,
+      listDatabases: apiListDatabases,
+      connectDatabase: apiConnectDatabase,
+      importFromPath: apiImportFromPath
     })
   }
 })
