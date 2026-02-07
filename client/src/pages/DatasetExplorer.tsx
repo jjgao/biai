@@ -5922,18 +5922,20 @@ function DatasetExplorer() {
                     }}>
                       {table.displayName || table.name}
                     </h3>
-                    <div style={{
-                      fontSize: '0.8rem',
-                      color: '#666',
-                      marginTop: '0.2rem'
-                    }}>
+                    <div
+                      data-testid={`row-count-${table.name}`}
+                      style={{
+                        fontSize: '0.8rem',
+                        color: '#666',
+                        marginTop: '0.2rem'
+                      }}>
                       {hasTableFilters && baselineRowCount !== null ? (
                         <>
-                          <span style={{ color: '#E65100', fontWeight: 600 }}>
+                          <span data-testid={`filtered-count-${table.name}`} style={{ color: '#E65100', fontWeight: 600 }}>
                             {tableRowCount.toLocaleString()}
                           </span>
                           <span style={{ color: '#999' }}> / </span>
-                          <span>{baselineRowCount.toLocaleString()}</span>
+                          <span data-testid={`total-count-${table.name}`}>{baselineRowCount.toLocaleString()}</span>
                           <span style={{
                             marginLeft: '0.3rem',
                             padding: '0.1rem 0.4rem',
@@ -5950,7 +5952,7 @@ function DatasetExplorer() {
                         </>
                       ) : (
                         <>
-                          {tableRowCount.toLocaleString()} {metricLabels.short} · {visibleAggregations.length} columns
+                          <span data-testid={`total-count-${table.name}`}>{tableRowCount.toLocaleString()}</span> {metricLabels.short} · {visibleAggregations.length} columns
                           <span style={{ color: '#999', fontSize: '0.75rem' }}> (by {getCountByLabelFromCacheKey(table.name, countByValue)})</span>
                         </>
                       )}
@@ -6135,7 +6137,7 @@ function DatasetExplorer() {
             </div>
           )
         })}
-    </div>
+    </div >
   )
 }
 

@@ -58,16 +58,18 @@ test.describe('Cross-Table Filtering', () => {
         // Verify filter is active
         await expect(page.getByText('Active Filters:')).toBeVisible()
 
-        // 3. Verify Patients count shows filtering (e.g., "3 / 5")
-        // The " / 5" part confirms we are seeing a filtered subset of 5 total rows
-        await expect(page.getByText('/ 5').first()).toBeVisible()
+        // 3. Verify Patients count shows filtering
+        // Use data-testid for robust selection
+        await expect(page.getByTestId('filtered-count-patients')).toBeVisible()
+        await expect(page.getByTestId('total-count-patients')).toContainText('5')
 
         // 4. Go to Treatments tab
         await page.getByRole('button', { name: /Treatments/i }).click()
 
-        // 5. Verify Treatments count is filtered (e.g., "4 / 6")
-        // " / 6" confirms subset of 6 total rows
-        await expect(page.getByText('/ 6').first()).toBeVisible()
+        // 5. Verify Treatments count is filtered
+        // Use data-testid for robust selection
+        await expect(page.getByTestId('filtered-count-treatments')).toBeVisible()
+        await expect(page.getByTestId('total-count-treatments')).toContainText('6')
 
         // Verify "linked" filter badge
         // The badge often has text like "+1 linked" or similar title
