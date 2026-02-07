@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest'
+import { describe, test, expect, beforeEach, afterAll, vi } from 'vitest'
 import request from 'supertest'
 import express, { Request, Response, NextFunction } from 'express'
 
@@ -53,8 +53,14 @@ vi.mock('../../services/datasetService.js', () => ({
   }
 }))
 
+// Mock directoryImportService
+vi.mock('../../services/directoryImportService.js', () => ({
+  importFromDirectory: vi.fn()
+}))
+
 import datasetsRouter from '../datasets.js'
 import datasetService from '../../services/datasetService.js'
+import { importFromDirectory } from '../../services/directoryImportService.js'
 
 const mockCreateDataset = vi.mocked(datasetService.createDataset)
 const mockListDatasets = vi.mocked(datasetService.listDatasets)
@@ -536,6 +542,120 @@ describe('Datasets API Routes', () => {
       expect(response.body.success).toBe(true)
       expect(response.body.message).toBe('Dataset deleted successfully')
       expect(mockDeleteDataset).toHaveBeenCalledWith('test-id')
+    })
+  })
+
+  describe('POST /api/datasets/import-from-path', () => {
+    const mockImportFromDirectory = vi.mocked(importFromDirectory)
+    const originalEnv = { ...process.env }
+
+    beforeEach(() => {
+      mockImportFromDirectory.mockReset()
+      delete process.env.BIAI_ENABLE_IMPORT_FROM_PATH
+      delete process.env.BIAI_IMPORT_ALLOWED_PATHS
+    })
+
+    afterAll(() => {
+      process.env = originalEnv
+    })
+
+    test('should return 403 when BIAI_ENABLE_IMPORT_FROM_PATH is not set', async () => {
+      const response = await request(app)
+        .post('/api/datasets/import-from-path')
+        .send({ path: '/some/dir' })
+
+      expect(response.status).toBe(403)
+      expect(response.body.error).toContain('Directory import is disabled')
+      expect(mockImportFromDirectory).not.toHaveBeenCalled()
+    })
+
+    test('should return 400 when path is missing', async () => {
+      process.env.BIAI_ENABLE_IMPORT_FROM_PATH = 'true'
+
+      const response = await request(app)
+        .post('/api/datasets/import-from-path')
+        .send({})
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toBe('path is required and must be a string')
+    })
+
+    test('should return 400 when path is not a string', async () => {
+      process.env.BIAI_ENABLE_IMPORT_FROM_PATH = 'true'
+
+      const response = await request(app)
+        .post('/api/datasets/import-from-path')
+        .send({ path: 123 })
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toBe('path is required and must be a string')
+    })
+
+    test('should return 403 when path is not in allowlist', async () => {
+      process.env.BIAI_ENABLE_IMPORT_FROM_PATH = 'true'
+      process.env.BIAI_IMPORT_ALLOWED_PATHS = '/allowed/path1,/allowed/path2'
+
+      const response = await request(app)
+        .post('/api/datasets/import-from-path')
+        .send({ path: '/not/allowed/dir' })
+
+      expect(response.status).toBe(403)
+      expect(response.body.error).toBe('Path not in allowed import paths')
+      expect(mockImportFromDirectory).not.toHaveBeenCalled()
+    })
+
+    test('should succeed when feature is enabled and no allowlist is set', async () => {
+      process.env.BIAI_ENABLE_IMPORT_FROM_PATH = 'true'
+
+      mockImportFromDirectory.mockResolvedValue({
+        datasetId: 'ds-1',
+        datasetName: 'Test Dataset',
+        tables: [{ tableId: 't-1', tableName: 'patients', displayName: 'Patients', rowCount: 100 }]
+      })
+
+      const response = await request(app)
+        .post('/api/datasets/import-from-path')
+        .send({ path: '/some/dataset/dir' })
+
+      expect(response.status).toBe(200)
+      expect(response.body.success).toBe(true)
+      expect(response.body.datasetId).toBe('ds-1')
+      expect(response.body.datasetName).toBe('Test Dataset')
+      expect(response.body.tables).toHaveLength(1)
+      expect(mockImportFromDirectory).toHaveBeenCalled()
+    })
+
+    test('should succeed when path is within allowlist', async () => {
+      process.env.BIAI_ENABLE_IMPORT_FROM_PATH = 'true'
+      process.env.BIAI_IMPORT_ALLOWED_PATHS = '/allowed/base'
+
+      mockImportFromDirectory.mockResolvedValue({
+        datasetId: 'ds-2',
+        datasetName: 'Allowed Dataset',
+        tables: []
+      })
+
+      const response = await request(app)
+        .post('/api/datasets/import-from-path')
+        .send({ path: '/allowed/base/sub/dir' })
+
+      expect(response.status).toBe(200)
+      expect(response.body.success).toBe(true)
+      expect(mockImportFromDirectory).toHaveBeenCalled()
+    })
+
+    test('should return 500 when importFromDirectory throws', async () => {
+      process.env.BIAI_ENABLE_IMPORT_FROM_PATH = 'true'
+
+      mockImportFromDirectory.mockRejectedValue(new Error('Directory not found'))
+
+      const response = await request(app)
+        .post('/api/datasets/import-from-path')
+        .send({ path: '/nonexistent/dir' })
+
+      expect(response.status).toBe(500)
+      expect(response.body.error).toBe('Failed to import from path')
+      expect(response.body.message).toBe('Directory not found')
     })
   })
 

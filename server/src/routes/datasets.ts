@@ -10,6 +10,7 @@ import { unlink } from 'fs/promises'
 import { fetchFileFromUrl } from '../utils/urlFetcher.js'
 import { detectForeignKeys } from '../services/foreignKeyDetector.js'
 import { detectListColumns } from '../services/columnAnalyzer.js'
+import { importFromDirectory } from '../services/directoryImportService.js'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
 
@@ -137,6 +138,43 @@ router.post('/connect', async (req, res) => {
   } catch (error: any) {
     console.error('Connect database error:', error)
     return res.status(500).json({ error: 'Failed to connect database', message: error.message })
+  }
+})
+
+// Import dataset from local directory
+router.post('/import-from-path', async (req, res) => {
+  try {
+    // Security: require explicit opt-in via env var
+    if (process.env.BIAI_ENABLE_IMPORT_FROM_PATH !== 'true') {
+      return res.status(403).json({
+        error: 'Directory import is disabled. Set BIAI_ENABLE_IMPORT_FROM_PATH=true to enable.'
+      })
+    }
+
+    const { path: dirPath } = req.body
+
+    if (!dirPath || typeof dirPath !== 'string') {
+      return res.status(400).json({ error: 'path is required and must be a string' })
+    }
+
+    // Resolve to absolute path
+    const resolved = path.resolve(dirPath)
+
+    // Check against BIAI_IMPORT_ALLOWED_PATHS allowlist if set
+    const allowedPaths = process.env.BIAI_IMPORT_ALLOWED_PATHS
+    if (allowedPaths) {
+      const allowed = allowedPaths.split(',').map(p => path.resolve(p.trim()))
+      const isAllowed = allowed.some(a => resolved === a || resolved.startsWith(a + path.sep))
+      if (!isAllowed) {
+        return res.status(403).json({ error: 'Path not in allowed import paths' })
+      }
+    }
+
+    const result = await importFromDirectory(resolved)
+    return res.json({ success: true, ...result })
+  } catch (error: any) {
+    console.error('Import from path error:', error)
+    return res.status(500).json({ error: 'Failed to import from path', message: error.message })
   }
 })
 

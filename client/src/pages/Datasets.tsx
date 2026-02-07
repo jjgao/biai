@@ -49,6 +49,12 @@ function Datasets() {
   const [creating, setCreating] = useState(false)
   const [importing, setImporting] = useState(false)
 
+  // Import from directory state
+  const [showDirectoryImport, setShowDirectoryImport] = useState(false)
+  const [directoryPath, setDirectoryPath] = useState('')
+  const [importingDirectory, setImportingDirectory] = useState(false)
+  const [directoryImportError, setDirectoryImportError] = useState<string | null>(null)
+
   // Import database state
   const [availableDatabases, setAvailableDatabases] = useState<DatabaseInfo[]>([])
   const [selectedDatabase, setSelectedDatabase] = useState('')
@@ -145,6 +151,7 @@ function Datasets() {
     }
     setShowImport(true)
     setShowCreate(false)
+    setShowDirectoryImport(false)
     setAvailableDatabases([])
     setSelectedDatabase('')
     setImportDisplayName('')
@@ -197,6 +204,38 @@ function Datasets() {
     }
   }
 
+  const handleShowDirectoryImport = () => {
+    if (showDirectoryImport) {
+      setShowDirectoryImport(false)
+      return
+    }
+    setShowDirectoryImport(true)
+    setShowCreate(false)
+    setShowImport(false)
+    setDirectoryPath('')
+    setDirectoryImportError(null)
+  }
+
+  const handleDirectoryImport = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!directoryPath.trim()) return
+
+    try {
+      setImportingDirectory(true)
+      setDirectoryImportError(null)
+      const response = await api.post('/datasets/import-from-path', {
+        path: directoryPath.trim()
+      })
+      setShowDirectoryImport(false)
+      setDirectoryPath('')
+      navigate(`/datasets/${response.data.datasetId}`)
+    } catch (error: any) {
+      console.error('Directory import failed:', error)
+      setDirectoryImportError(error.response?.data?.message || error.response?.data?.error || error.message || 'Import failed')
+    } finally {
+      setImportingDirectory(false)
+    }
+  }
 
   return (
     <div>
@@ -207,6 +246,7 @@ function Datasets() {
             onClick={() => {
               setShowCreate(!showCreate)
               setShowImport(false)
+              setShowDirectoryImport(false)
             }}
             style={{
               padding: '0.5rem 1rem',
@@ -218,6 +258,19 @@ function Datasets() {
             }}
           >
             {showCreate ? 'Cancel' : '+ Create Dataset'}
+          </button>
+          <button
+            onClick={handleShowDirectoryImport}
+            style={{
+              padding: '0.5rem 1rem',
+              background: showDirectoryImport ? '#ccc' : '#FF9800',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            {showDirectoryImport ? 'Cancel' : 'Import from Directory'}
           </button>
           <button
             onClick={handleShowImport}
@@ -281,6 +334,58 @@ function Datasets() {
               }}
             >
               {creating ? 'Creating...' : 'Create Dataset'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {showDirectoryImport && (
+        <div style={{
+          background: 'white',
+          padding: '2rem',
+          borderRadius: '8px',
+          marginBottom: '2rem',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+        }}>
+          <h3 style={{ marginTop: 0 }}>Import from Directory</h3>
+          <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+            Import a dataset from a local directory containing .meta configuration files and data files
+          </p>
+          <form onSubmit={handleDirectoryImport}>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem' }}>Directory Path *</label>
+              <input
+                type="text"
+                value={directoryPath}
+                onChange={(e) => {
+                  setDirectoryPath(e.target.value)
+                  setDirectoryImportError(null)
+                }}
+                required
+                placeholder="e.g., example_data/gbm_tcga_pan_can_atlas_2018"
+                style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
+              />
+            </div>
+
+            {directoryImportError && (
+              <div style={{ marginBottom: '1rem', color: '#d32f2f', fontSize: '0.875rem' }}>
+                {directoryImportError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={importingDirectory || !directoryPath.trim()}
+              style={{
+                padding: '0.75rem 1.5rem',
+                background: (importingDirectory || !directoryPath.trim()) ? '#ccc' : '#FF9800',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: (importingDirectory || !directoryPath.trim()) ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {importingDirectory ? 'Importing...' : 'Import Dataset'}
             </button>
           </form>
         </div>
