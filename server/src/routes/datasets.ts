@@ -754,7 +754,6 @@ router.get('/:id/tables/:tableId/columns', async (req, res) => {
 })
 
 // Update table metadata (e.g. rename)
-// Update table metadata (e.g. rename)
 router.patch('/:id/tables/:tableId', async (req, res) => {
   try {
     const { id: datasetId, tableId } = req.params

@@ -102,7 +102,8 @@ test.describe('Cross-Table Filtering', () => {
         const linkedBadge = page.locator('div[title*="propagated from related tables"]')
         await expect(linkedBadge).toBeVisible()
 
-        // Check count is filtered (subset of 5)
-        await expect(page.getByText('/ 5').first()).toBeVisible()
+        // Check count is filtered (subset of 5) using data-testid for robustness
+        await expect(page.getByTestId('filtered-count-patients')).toBeVisible()
+        await expect(page.getByTestId('total-count-patients')).toContainText('5')
     })
 })

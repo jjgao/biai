@@ -1852,7 +1852,7 @@ function DatasetManage() {
           {dataset.tables.map((table) => (
             <div
               key={table.id}
-              data-testid={`table-card-${table.id}`}
+              data-testid={`table-card-${table.name}`}
               style={{
                 background: 'white',
                 padding: '1.5rem',
