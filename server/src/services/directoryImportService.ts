@@ -44,9 +44,12 @@ const CORE_DATASET_FIELDS = new Set([
  */
 function convertRelationship(rel: TableRelationship): DatasetTableRelationship {
   const match = rel.references.match(/^([a-zA-Z0-9_]+)\(([^)]+)\)$/)
+  // Normalize referenced_table the same way datasetService normalizes table names
+  const rawTable = match ? match[1] : rel.references
+  const normalizedTable = rawTable.replace(/[^a-z0-9_]/g, '_').toLowerCase()
   return {
     foreign_key: rel.foreign_key,
-    referenced_table: match ? match[1] : rel.references,
+    referenced_table: normalizedTable,
     referenced_column: match ? match[2] : '',
     type: rel.type || 'many-to-one'
   }

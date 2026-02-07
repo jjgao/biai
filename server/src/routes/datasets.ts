@@ -144,6 +144,13 @@ router.post('/connect', async (req, res) => {
 // Import dataset from local directory
 router.post('/import-from-path', async (req, res) => {
   try {
+    // Security: require explicit opt-in via env var
+    if (process.env.BIAI_ENABLE_IMPORT_FROM_PATH !== 'true') {
+      return res.status(403).json({
+        error: 'Directory import is disabled. Set BIAI_ENABLE_IMPORT_FROM_PATH=true to enable.'
+      })
+    }
+
     const { path: dirPath } = req.body
 
     if (!dirPath || typeof dirPath !== 'string') {
@@ -153,11 +160,12 @@ router.post('/import-from-path', async (req, res) => {
     // Resolve to absolute path
     const resolved = path.resolve(dirPath)
 
-    // Optional: check against BIAI_IMPORT_ALLOWED_PATHS env var
+    // Check against BIAI_IMPORT_ALLOWED_PATHS allowlist if set
     const allowedPaths = process.env.BIAI_IMPORT_ALLOWED_PATHS
     if (allowedPaths) {
       const allowed = allowedPaths.split(',').map(p => path.resolve(p.trim()))
-      if (!allowed.some(a => resolved.startsWith(a))) {
+      const isAllowed = allowed.some(a => resolved === a || resolved.startsWith(a + path.sep))
+      if (!isAllowed) {
         return res.status(403).json({ error: 'Path not in allowed import paths' })
       }
     }

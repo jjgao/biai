@@ -231,7 +231,7 @@ function Datasets() {
       navigate(`/datasets/${response.data.datasetId}`)
     } catch (error: any) {
       console.error('Directory import failed:', error)
-      setDirectoryImportError(error.response?.data?.message || error.message || 'Import failed')
+      setDirectoryImportError(error.response?.data?.message || error.response?.data?.error || error.message || 'Import failed')
     } finally {
       setImportingDirectory(false)
     }
