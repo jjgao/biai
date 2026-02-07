@@ -35,8 +35,8 @@ test.describe('Dashboard Management', () => {
     // Verify button changes to "Remove from dashboard"
     await expect(page.getByTitle('Remove from dashboard').first()).toBeVisible()
 
-    // 2. Verify chart on Dashboard
-    await page.getByRole('button', { name: 'Dashboard', exact: true }).click()
+    // 2. Verify chart on Dashboard (text becomes "Dashboard (N)" after pinning)
+    await page.getByRole('button', { name: /^Dashboard/ }).click()
     await expect(page.getByText('Your Dashboard is Empty')).not.toBeVisible()
     await expect(page.locator('.js-plotly-plot').first()).toBeVisible()
 
