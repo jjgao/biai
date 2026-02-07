@@ -1,43 +1,21 @@
-import { test, expect } from './fixtures'
+import { test, expect, waitForServer, apiCreateDataset, apiUploadCSV, apiDeleteDataset } from './fixtures'
 
 test.describe('Filter Presets', () => {
   let datasetId: string
 
   test.beforeAll(async () => {
-    // Create dataset and upload CSV via API
-    const ds = await fetch('http://localhost:5001/api/datasets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: `E2E Presets ${Date.now()}`,
-        description: 'Dataset for filter preset e2e tests'
-      })
-    }).then((r) => r.json())
-    datasetId = ds.dataset.id
-
-    // Upload CSV
-    const fs = await import('fs')
-    const path = await import('path')
-    const filePath = path.resolve('example_data/test-data-geographic.csv')
-    const fileBuffer = fs.readFileSync(filePath)
-
-    const formData = new FormData()
-    formData.append('file', new Blob([fileBuffer]), 'test-data-geographic.csv')
-    formData.append('tableName', 'geographic')
-    formData.append('displayName', 'Geographic Data')
-    formData.append('delimiter', ',')
-
-    await fetch(`http://localhost:5001/api/datasets/${datasetId}/tables`, {
-      method: 'POST',
-      body: formData
-    })
+    await waitForServer()
+    const ds = await apiCreateDataset(
+      `E2E Presets ${Date.now()}`,
+      'Dataset for filter preset e2e tests'
+    )
+    datasetId = ds.datasetId
+    await apiUploadCSV(datasetId, 'example_data/test-data-geographic.csv', 'geographic', 'Geographic Data')
   })
 
   test.afterAll(async () => {
     if (datasetId) {
-      await fetch(`http://localhost:5001/api/datasets/${datasetId}`, {
-        method: 'DELETE'
-      }).catch(() => {})
+      await apiDeleteDataset(datasetId).catch(() => {})
     }
   })
 

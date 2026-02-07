@@ -3,6 +3,28 @@ import fs from 'fs'
 import path from 'path'
 
 const API_BASE = 'http://localhost:5001/api'
+const SERVER_BASE = 'http://localhost:5001'
+
+/**
+ * Wait for the API server to be ready (useful in beforeAll when
+ * Playwright's webServer only waits for the client on port 3000).
+ */
+export async function waitForServer(
+  timeoutMs = 30_000,
+  intervalMs = 500
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${SERVER_BASE}/health`)
+      if (res.ok) return
+    } catch {
+      // server not up yet
+    }
+    await new Promise((r) => setTimeout(r, intervalMs))
+  }
+  throw new Error(`API server not ready after ${timeoutMs}ms`)
+}
 
 export interface DatasetInfo {
   datasetId: string
@@ -16,7 +38,7 @@ export interface TableInfo {
   rowCount: number
 }
 
-async function apiCreateDataset(
+export async function apiCreateDataset(
   name: string,
   description = ''
 ): Promise<DatasetInfo> {
@@ -30,7 +52,7 @@ async function apiCreateDataset(
   return { datasetId: data.dataset.id, name: data.dataset.name }
 }
 
-async function apiUploadCSV(
+export async function apiUploadCSV(
   datasetId: string,
   filePath: string,
   tableName: string,
@@ -63,7 +85,7 @@ async function apiUploadCSV(
   }
 }
 
-async function apiDeleteDataset(datasetId: string): Promise<void> {
+export async function apiDeleteDataset(datasetId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/datasets/${datasetId}`, {
     method: 'DELETE'
   })
