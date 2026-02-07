@@ -45,3 +45,9 @@ clickhouse-data/
 
 # Production secrets
 .env.production
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

@@ -118,6 +118,12 @@ npm run build
 - Test files: `__tests__/*.test.ts` or `*.test.ts`
 - Test utilities in `server/src/__tests__/utils/`
 - **API route tests**: When adding or modifying API endpoints, add route-level tests using `supertest` + `express` (see `server/src/routes/__tests__/` for examples). These test that HTTP requests are correctly parsed and passed to services.
+- **E2E tests**: Playwright for end-to-end tests in `tests/e2e/`
+  - Run: `npm run test:e2e` (auto-starts dev servers)
+  - UI mode: `npm run test:e2e:ui`
+  - Requires ClickHouse running (`docker-compose up -d clickhouse`)
+  - Test data: uses `example_data/` files
+  - Fixtures in `tests/e2e/fixtures.ts` provide API helpers for fast dataset setup/teardown
 
 ## Common Patterns
 
@@ -176,7 +182,7 @@ export const fetchSomething = async (id: string) => {
 
 1. **Large Component** (#92) - `DatasetExplorer.tsx` is 6K+ lines; refactoring planned (#119-#123)
 2. **Type Duplication** (#94) - Same types defined in client and server
-3. **Missing E2E Tests** (#95) - No end-to-end tests for critical workflows
+3. ~~**Missing E2E Tests** (#95) - No end-to-end tests for critical workflows~~ (resolved: Playwright e2e tests added)
 4. **No OpenAPI Docs** (#93) - API endpoints lack formal specification
 
 ## Debugging Tips
