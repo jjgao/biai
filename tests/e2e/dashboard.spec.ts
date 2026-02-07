@@ -1,10 +1,10 @@
-
-import { test, expect } from './fixtures'
+import { test, expect, waitForServer } from './fixtures'
 
 test.describe('Dashboard Management', () => {
     let datasetId: string
 
     test.beforeEach(async ({ apiHelpers }) => {
+        await waitForServer()
         // Create fresh dataset for each test to avoid state pollution
         const ds = await apiHelpers.createDataset(
             `E2E Dashboard ${Date.now()}`,
@@ -40,7 +40,8 @@ test.describe('Dashboard Management', () => {
         await expect(page.getByTitle('Remove from dashboard').first()).toBeVisible()
 
         // 2. Verify chart on Dashboard
-        await page.getByRole('button', { name: 'Dashboard' }).click()
+        // Use regex to match "Dashboard" or "Dashboard (1)" but NOT "Load Dashboard" or "Save Dashboard"
+        await page.getByRole('button', { name: /^Dashboard/ }).click()
         await expect(page.getByText('Your Dashboard is Empty')).not.toBeVisible()
         // Chart should be visible
         await expect(page.locator('.js-plotly-plot').first()).toBeVisible()
@@ -74,7 +75,6 @@ test.describe('Dashboard Management', () => {
         // 5. Load Dashboard
         await page.getByRole('button', { name: 'Load Dashboard' }).click()
 
-        // Expect "My Test Dashboard" in the list
         // Expect "My Test Dashboard" in the list
         const dashboardItem = page.getByText('My Test Dashboard').first()
         await expect(dashboardItem).toBeVisible()

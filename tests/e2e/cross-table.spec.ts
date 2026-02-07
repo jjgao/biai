@@ -37,8 +37,8 @@ test.describe('Cross-Table Filtering', () => {
         await page.waitForLoadState('domcontentloaded')
 
         // Wait for Dashboard tab to verify app loaded
-        // Match button STARTING with "Dashboard" to exclude "Load Dashboard"
-        await expect(page.locator('button').filter({ hasText: /^\s*Dashboard/i })).toBeVisible({ timeout: 30_000 })
+        // Using regex to match "Dashboard" or "Dashboard (1)" but NOT "Load Dashboard"
+        await expect(page.getByRole('button', { name: /^Dashboard/ })).toBeVisible({ timeout: 30_000 })
 
         // 1. Go to Patients tab
         // Button includes chart count e.g. "Patients (3)"
@@ -94,7 +94,7 @@ test.describe('Cross-Table Filtering', () => {
         await expect(page.getByText('Active Filters:')).toBeVisible()
 
         // 3. Go to Patients tab
-        await page.getByRole('button', { name: 'Patients', exact: false }).click()
+        await page.getByRole('button', { name: /Patients/i }).click()
 
         // 4. Verify propagated filter
         const linkedBadge = page.locator('div[title*="propagated from related tables"]')
