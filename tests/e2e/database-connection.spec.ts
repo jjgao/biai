@@ -32,7 +32,7 @@ test.describe('Database Connection', () => {
     await page.waitForLoadState('networkidle')
 
     await expect(page.getByRole('heading', { name: displayName })).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText('Connected')).toBeVisible()
+    await expect(page.getByText('Connected', { exact: true })).toBeVisible()
     await expect(page.getByText('Host:')).toBeVisible()
   })
 })

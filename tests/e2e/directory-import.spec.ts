@@ -1,3 +1,4 @@
+import path from 'path'
 import { test, expect, waitForServer, apiImportFromPath, apiDeleteDataset } from './fixtures'
 
 test.describe('Directory Import', () => {
@@ -16,7 +17,8 @@ test.describe('Directory Import', () => {
   test('import dataset from local path', async ({ page }) => {
     test.setTimeout(120_000)
 
-    const result = await apiImportFromPath('example_data/gbm_tcga_pan_can_atlas_2018')
+    const datasetPath = path.resolve('example_data/gbm_tcga_pan_can_atlas_2018')
+    const result = await apiImportFromPath(datasetPath)
     datasetId = result.datasetId
 
     await page.goto(`/datasets/${datasetId}`)
