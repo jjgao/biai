@@ -249,7 +249,15 @@ function DatasetExplorer() {
   const [activeCountMenuKey, setActiveCountMenuKey] = useState<string | null>(null)
   const [ancestorOptions, setAncestorOptions] = useState<Record<string, AncestorOption[]>>({})
   const [visibleDashboardKeys, setVisibleDashboardKeys] = useState<Record<string, boolean>>({})
-  const [survivalViewPreferences, setSurvivalViewPreferences] = useState<Record<string, 'histogram' | 'km'>>({})
+  const [survivalViewPreferences, setSurvivalViewPreferences] = useState<Record<string, 'histogram' | 'km'>>(() => {
+    try {
+      if (!identifier) return {}
+      const stored = localStorage.getItem(`survivalPrefs_${identifier}`)
+      return stored ? JSON.parse(stored) : {}
+    } catch {
+      return {}
+    }
+  })
   const survivalRequests = useRef<Set<string>>(new Set())
   const dashboardObserverRef = useRef<IntersectionObserver | null>(null)
   const dashboardCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -274,7 +282,11 @@ function DatasetExplorer() {
   const countByInitialized = useRef(false)
   const previousCountByRef = useRef<Record<string, CountBySelection>>({})
   const chartOverridesInitialized = useRef(false)
-  const [showPercentageLabels, setShowPercentageLabels] = useState(false)
+  const [showPercentageLabels, setShowPercentageLabels] = useState(() => {
+    if (!identifier) return false
+    const storageKey = `${CHART_LABEL_STORAGE_PREFIX}${identifier}`
+    return (localStorage.getItem(storageKey) ?? localStorage.getItem(`pieLabels_${identifier}`)) === 'percent'
+  })
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null)
   const settingsMenuRef = useRef<HTMLDivElement | null>(null)
@@ -477,8 +489,14 @@ function DatasetExplorer() {
     const key = `${tableName}.${columnName}`
     setSurvivalViewPreferences(prev => {
       const current = prev[key] || 'histogram'
-      const next = current === 'histogram' ? 'km' : 'histogram'
-      return { ...prev, [key]: next }
+      const next: 'histogram' | 'km' = current === 'histogram' ? 'km' : 'histogram'
+      const updated: Record<string, 'histogram' | 'km'> = { ...prev, [key]: next }
+      try {
+        localStorage.setItem(`survivalPrefs_${identifier}`, JSON.stringify(updated))
+      } catch (error) {
+        console.error('Failed to save survival view preferences:', error)
+      }
+      return updated
     })
   }
 
@@ -2200,23 +2218,26 @@ function DatasetExplorer() {
     return () => document.removeEventListener('click', handleClick)
   }, [activeCountMenuKey])
 
+  // Re-load chart label preference when identifier changes
   useEffect(() => {
     const storageKey = `${CHART_LABEL_STORAGE_PREFIX}${identifier}`
     const stored = localStorage.getItem(storageKey) ?? localStorage.getItem(`pieLabels_${identifier}`)
-    if (stored === 'percent') {
-      setShowPercentageLabels(true)
-    } else {
-      setShowPercentageLabels(false)
-    }
+    setShowPercentageLabels(stored === 'percent')
   }, [identifier])
 
+  // Re-load survival view preferences when identifier changes
   useEffect(() => {
     try {
-      localStorage.setItem(`${CHART_LABEL_STORAGE_PREFIX}${identifier}`, showPercentageLabels ? 'percent' : 'count')
-    } catch (error) {
-      console.error('Failed to persist chart label mode:', error)
+      const stored = localStorage.getItem(`survivalPrefs_${identifier}`)
+      if (stored) {
+        setSurvivalViewPreferences(JSON.parse(stored))
+      } else {
+        setSurvivalViewPreferences({})
+      }
+    } catch {
+      setSurvivalViewPreferences({})
     }
-  }, [showPercentageLabels, identifier])
+  }, [identifier])
 
   useEffect(() => {
     if (countByInitialized.current) return
@@ -4430,6 +4451,11 @@ function DatasetExplorer() {
                   onClick={() => {
                     setShowPercentageLabels(false)
                     setShowSettingsMenu(false)
+                    try {
+                      localStorage.setItem(`${CHART_LABEL_STORAGE_PREFIX}${identifier}`, 'count')
+                    } catch (e) {
+                      console.error('Failed to save chart label preference', e)
+                    }
                   }}
                   style={{
                     border: 'none',
@@ -4448,6 +4474,11 @@ function DatasetExplorer() {
                   onClick={() => {
                     setShowPercentageLabels(true)
                     setShowSettingsMenu(false)
+                    try {
+                      localStorage.setItem(`${CHART_LABEL_STORAGE_PREFIX}${identifier}`, 'percent')
+                    } catch (e) {
+                      console.error('Failed to save chart label preference', e)
+                    }
                   }}
                   style={{
                     border: 'none',
