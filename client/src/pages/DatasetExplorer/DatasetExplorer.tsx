@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import Plot from 'react-plotly.js'
 import type { PlotMouseEvent, PlotSelectionEvent } from 'plotly.js'
-import SafeHtml from '../components/SafeHtml'
-import api from '../services/api'
-import type { MetricPathSegment } from '../types'
+import SafeHtml from '../../components/SafeHtml'
+import api from '../../services/api'
+import type { MetricPathSegment } from '../../types'
 import {
   findRelationshipPath,
   type Filter,
@@ -16,187 +16,37 @@ import {
   getFilterColumn,
   filterContainsColumn,
   migrateFiltersToCurrentSchema,
-} from '../utils/filterHelpers'
-import { encodeState, decodeState } from '../utils/urlHelpers'
+} from '../../utils/filterHelpers'
+import { encodeState, decodeState } from '../../utils/urlHelpers'
 import {
-  savePresetsToLocalStorage,
-  loadPresetsFromLocalStorage,
-  createNewPreset,
-  normalizeImportedPresets,
-  type FilterPreset,
   type CountBySelection
-} from '../utils/presetHelpers'
-import { getStateCode, normalizeStateName } from '../data/us-states'
-// Small categorical sets render better as pie charts; beyond this use bars.
-const MAX_PIE_CATEGORIES = 8
-
-const CHART_LABEL_STORAGE_PREFIX = 'chartLabels_'
-const CHART_OVERRIDE_STORAGE_PREFIX = 'chartOverrides_'
-const TABLE_SCOPE_KEY = 'table'
-const DASHBOARD_SCOPE_KEY = 'dashboard'
-const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
-const CACHE_MAX_ENTRIES_PER_TABLE = 5
-const MAX_ANCESTOR_DEPTH = 4
-
-const chartOverrideStorageKey = (identifier: string) => `${CHART_OVERRIDE_STORAGE_PREFIX}${identifier}`
-
-export const persistChartOverrides = (
-  storage: Storage,
-  identifier: string,
-  overrides: Record<string, string>
-): void => {
-  const key = chartOverrideStorageKey(identifier)
-  if (Object.keys(overrides).length === 0) {
-    storage.removeItem(key)
-  } else {
-    storage.setItem(key, JSON.stringify(overrides))
-  }
-}
-
-export const loadChartOverrides = (
-  storage: Storage,
-  identifier: string
-): Record<string, string> | null => {
-  const key = chartOverrideStorageKey(identifier)
-  const stored = storage.getItem(key)
-  if (!stored) return null
-  try {
-    return JSON.parse(stored)
-  } catch {
-    return null
-  }
-}
-
-interface Column {
-  name: string
-  type: string
-  nullable: boolean
-}
-
-interface ColumnMetadata {
-  column_name: string
-  column_type: string
-  column_index: number
-  is_nullable: boolean
-  display_name: string
-  description: string
-  user_data_type: string
-  user_priority: number | null
-  display_type: string
-  unique_value_count: number
-  null_count: number
-  min_value: string | null
-  max_value: string | null
-  suggested_chart: string
-  display_priority: number
-  is_hidden: boolean
-  is_list_column?: boolean
-  list_syntax?: string
-}
-
-interface CategoryCount {
-  value: string
-  display_value: string
-  count: number
-  percentage: number
-}
-
-interface NumericStats {
-  min: number
-  max: number
-  mean: number
-  median: number
-  stddev: number
-  q25: number
-  q75: number
-}
-
-interface HistogramBin {
-  bin_start: number
-  bin_end: number
-  count: number
-  percentage: number
-}
-
-interface SurvivalCurvePoint {
-  time: number
-  atRisk: number
-  events: number
-  censored: number
-  survival: number
-}
-
-interface ColumnAggregation {
-  column_name: string
-  display_type: string
-  normalized_display_type?: string
-  total_rows: number
-  null_count: number
-  unique_count: number
-  categories?: CategoryCount[]
-  numeric_stats?: NumericStats
-  histogram?: HistogramBin[]
-  metric_type?: 'rows' | 'parent'
-  metric_parent_table?: string
-  metric_parent_column?: string
-  metric_path?: MetricPathSegment[]
-}
-
-interface SavedDashboard {
-  id: string
-  name: string
-  charts: Array<{ tableName: string; columnName: string; addedAt: string }>
-  createdAt: string
-  updatedAt: string
-}
-
-interface TableRelationship {
-  foreign_key: string
-  referenced_table: string
-  referenced_column: string
-  type?: string
-}
-
-interface Table {
-  id: string
-  name: string
-  displayName: string
-  rowCount: number
-  columns: Column[]
-  primaryKey?: string
-  relationships?: TableRelationship[]
-}
-
-interface Dataset {
-  id: string
-  name: string
-  database_name?: string
-  database_type?: 'created' | 'connected'
-  description: string
-  tags?: string[]
-  tables: Table[]
-}
-
-type AncestorOption = {
-  targetTable: string
-  label: string
-  key: string
-  path: MetricPathSegment[]
-}
-
-type AggregationCacheEntry = {
-  data: ColumnAggregation[]
-  filtersKey: string
-  timestamp: number
-}
-
-type SurvivalCacheEntry = {
-  data: SurvivalCurvePoint[]
-  filtersKey: string
-  countByKey: string
-  statusColumn: string
-  timestamp: number
-}
+} from '../../utils/presetHelpers'
+import { getStateCode, normalizeStateName } from '../../data/us-states'
+import { useFilterPresets } from './hooks/useFilterPresets'
+import { useViewPreferences } from './hooks/useViewPreferences'
+import { useDashboard } from './hooks/useDashboard'
+import {
+  MAX_PIE_CATEGORIES,
+  CHART_LABEL_STORAGE_PREFIX,
+  TABLE_SCOPE_KEY,
+  DASHBOARD_SCOPE_KEY,
+  CACHE_TTL_MS,
+  CACHE_MAX_ENTRIES_PER_TABLE,
+  MAX_ANCESTOR_DEPTH,
+  persistChartOverrides,
+  loadChartOverrides,
+  type ColumnMetadata,
+  type CategoryCount,
+  type NumericStats,
+  type HistogramBin,
+  type SurvivalCurvePoint,
+  type ColumnAggregation,
+  type Table,
+  type Dataset,
+  type AncestorOption,
+  type AggregationCacheEntry,
+  type SurvivalCacheEntry,
+} from './types'
 
 function DatasetExplorer() {
   const { id, database } = useParams()
@@ -228,68 +78,63 @@ function DatasetExplorer() {
   const [countBySelections, setCountBySelections] = useState<Record<string, CountBySelection>>({})
   const [countByReady, setCountByReady] = useState(false)
 
-  // Filter preset state
-  const [presets, setPresets] = useState<FilterPreset[]>([])
-  const [showSavePresetDialog, setShowSavePresetDialog] = useState(false)
-  const [showManagePresetsDialog, setShowManagePresetsDialog] = useState(false)
-  const [showPresetsDropdown, setShowPresetsDropdown] = useState(false)
-  const [presetNameInput, setPresetNameInput] = useState('')
-  const [editingPresetId, setEditingPresetId] = useState<string | null>(null)
+  // Filter preset management (extracted hook)
+  const {
+    presets,
+    showSavePresetDialog, setShowSavePresetDialog,
+    showManagePresetsDialog, setShowManagePresetsDialog,
+    showPresetsDropdown, setShowPresetsDropdown,
+    presetNameInput, setPresetNameInput,
+    editingPresetId, setEditingPresetId,
+    savePreset, applyPreset, deletePreset, renamePreset,
+    exportPresets, importPresets,
+  } = useFilterPresets({
+    identifier,
+    filters,
+    countBySelections,
+    setFilters,
+    setCountBySelections,
+  })
 
-  // View preferences: track whether each column should show chart or table
-  // Key format: "tableName.columnName", Value: "chart" | "table"
-  const [viewPreferences, setViewPreferences] = useState<Record<string, 'chart' | 'table'>>({})
+  // View preferences (extracted hook)
+  const {
+    showPercentageLabels, setShowPercentageLabels,
+    showSettingsMenu, setShowSettingsMenu,
+    settingsButtonRef, settingsMenuRef,
+    getViewPreference, toggleViewPreference,
+    getSurvivalViewPreference, toggleSurvivalViewPreference,
+  } = useViewPreferences({ identifier })
 
   // Tab navigation state: track which table tab is currently active
   const [activeTab, setActiveTab] = useState<string | null>(null)
 
-  // Dashboard state: track which charts are pinned to dashboard
-  const [dashboardCharts, setDashboardCharts] = useState<Array<{ tableName: string; columnName: string; countByTarget: string | null; addedAt: string }>>([])
+  // Dashboard management (extracted hook)
+  const {
+    dashboardCharts, setDashboardCharts,
+    visibleDashboardKeys,
+    savedDashboards,
+    activeDashboardId, setActiveDashboardId,
+    showSaveDashboardDialog, setShowSaveDashboardDialog,
+    showLoadDashboardDialog, setShowLoadDashboardDialog,
+    showManageDashboardsDialog, setShowManageDashboardsDialog,
+    newDashboardName, setNewDashboardName,
+    editingDashboardId, setEditingDashboardId,
+    setEditingDashboardName,
+    getDashboardChartKey, registerDashboardCard,
+    saveDashboard, loadDashboard, deleteDashboard, renameDashboard,
+  } = useDashboard({ identifier })
+
   const [chartCountOverrides, setChartCountOverrides] = useState<Record<string, string>>({})
   const [activeCountMenuKey, setActiveCountMenuKey] = useState<string | null>(null)
   const [ancestorOptions, setAncestorOptions] = useState<Record<string, AncestorOption[]>>({})
-  const [visibleDashboardKeys, setVisibleDashboardKeys] = useState<Record<string, boolean>>({})
-  const [survivalViewPreferences, setSurvivalViewPreferences] = useState<Record<string, 'histogram' | 'km'>>(() => {
-    try {
-      if (!identifier) return {}
-      const stored = localStorage.getItem(`survivalPrefs_${identifier}`)
-      return stored ? JSON.parse(stored) : {}
-    } catch {
-      return {}
-    }
-  })
   const survivalRequests = useRef<Set<string>>(new Set())
-  const dashboardObserverRef = useRef<IntersectionObserver | null>(null)
-  const dashboardCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
-  const dashboardElementKeyMap = useRef<Map<Element, string>>(new Map())
-  const intersectionObserverAvailable = typeof window !== 'undefined' && 'IntersectionObserver' in window
-
-  // Saved dashboards state
-  const [savedDashboards, setSavedDashboards] = useState<SavedDashboard[]>([])
-  const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null) // null = "Most Recent"
-  const [showSaveDashboardDialog, setShowSaveDashboardDialog] = useState(false)
-  const [showLoadDashboardDialog, setShowLoadDashboardDialog] = useState(false)
-  const [showManageDashboardsDialog, setShowManageDashboardsDialog] = useState(false)
-  const [newDashboardName, setNewDashboardName] = useState('')
-  const [editingDashboardId, setEditingDashboardId] = useState<string | null>(null)
-  const [_editingDashboardName, setEditingDashboardName] = useState('')
 
   // Track if filters have been initialized from URL to prevent overwriting
   const filtersInitialized = useRef(false)
   const isUpdatingURL = useRef(false)
-  const dashboardInitialized = useRef(false)
-  const savedDashboardsInitialized = useRef(false)
   const countByInitialized = useRef(false)
   const previousCountByRef = useRef<Record<string, CountBySelection>>({})
   const chartOverridesInitialized = useRef(false)
-  const [showPercentageLabels, setShowPercentageLabels] = useState(() => {
-    if (!identifier) return false
-    const storageKey = `${CHART_LABEL_STORAGE_PREFIX}${identifier}`
-    return (localStorage.getItem(storageKey) ?? localStorage.getItem(`pieLabels_${identifier}`)) === 'percent'
-  })
-  const [showSettingsMenu, setShowSettingsMenu] = useState(false)
-  const settingsButtonRef = useRef<HTMLButtonElement | null>(null)
-  const settingsMenuRef = useRef<HTMLDivElement | null>(null)
 
   // Helper functions for URL persistence
   const serializeFilters = (filters: Filter[]): string => {
@@ -373,132 +218,7 @@ function DatasetExplorer() {
     }
   }
 
-  // Helper functions for preset management
 
-  const savePreset = () => {
-    // identifier must be string here (since we're inside component)
-    if (!identifier || !presetNameInput.trim() || filters.length === 0) return
-
-    const newPreset = createNewPreset(
-      presetNameInput,
-      filters,
-      countBySelections
-    )
-
-    const updated = [...presets, newPreset]
-    setPresets(updated)
-    savePresetsToLocalStorage(localStorage, identifier, updated)
-    setPresetNameInput('')
-    setShowSavePresetDialog(false)
-  }
-
-  const applyPreset = (preset: FilterPreset) => {
-    // Presets are already migrated on load, but we can double check or just use them
-    // The extracted migrateFiltersToCurrentSchema logic is handled in load
-    setFilters(preset.filters || [])
-    setCountBySelections(JSON.parse(JSON.stringify(preset.countBySelections || {})))
-    setShowPresetsDropdown(false)
-  }
-
-  const deletePreset = (presetId: string) => {
-    if (!identifier) return
-    const updated = presets.filter(p => p.id !== presetId)
-    setPresets(updated)
-    savePresetsToLocalStorage(localStorage, identifier, updated)
-  }
-
-  const renamePreset = (presetId: string, newName: string) => {
-    if (!identifier || !newName.trim()) return
-    const updated = presets.map(p =>
-      p.id === presetId ? { ...p, name: newName.trim() } : p
-    )
-    setPresets(updated)
-    savePresetsToLocalStorage(localStorage, identifier, updated)
-    setEditingPresetId(null)
-  }
-
-  const exportPresets = () => {
-    const json = JSON.stringify(presets, null, 2)
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `saved-filters-${identifier}-${Date.now()}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const importPresets = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const imported = JSON.parse(e.target?.result as string) as FilterPreset[]
-        if (Array.isArray(imported)) {
-          if (!identifier) return
-          const updated = [...presets, ...normalizeImportedPresets(imported)]
-          setPresets(updated)
-          savePresetsToLocalStorage(localStorage, identifier, updated)
-        }
-      } catch (error) {
-        console.error('Failed to import filters:', error)
-        alert('Failed to import filters. Invalid file format.')
-      }
-    }
-    reader.readAsText(file)
-    // Reset input so same file can be imported again
-    event.target.value = ''
-  }
-
-  // Helper functions for view preferences
-  const getViewPreference = (tableName: string, columnName: string, categoryCount: number): 'chart' | 'table' => {
-    const key = `${tableName}.${columnName}`
-    // Check if user has set a preference
-    if (viewPreferences[key]) {
-      return viewPreferences[key]
-    }
-    // Default: table for >8 categories, chart for ≤8
-    return categoryCount > 8 ? 'table' : 'chart'
-  }
-
-  const toggleViewPreference = (tableName: string, columnName: string) => {
-    const key = `${tableName}.${columnName}`
-    setViewPreferences(prev => {
-      const current = prev[key]
-      const newValue: 'table' | 'chart' = current === 'table' ? 'chart' : 'table'
-      const updated: Record<string, 'table' | 'chart'> = { ...prev, [key]: newValue }
-      // Save to localStorage
-      try {
-        localStorage.setItem(`viewPrefs_${identifier}`, JSON.stringify(updated))
-      } catch (error) {
-        console.error('Failed to save view preferences:', error)
-      }
-      return updated
-    })
-  }
-
-  // Survival view preferences (histogram vs KM)
-  const getSurvivalViewPreference = (tableName: string, columnName: string): 'histogram' | 'km' => {
-    const key = `${tableName}.${columnName}`
-    return survivalViewPreferences[key] || 'histogram'
-  }
-
-  const toggleSurvivalViewPreference = (tableName: string, columnName: string) => {
-    const key = `${tableName}.${columnName}`
-    setSurvivalViewPreferences(prev => {
-      const current = prev[key] || 'histogram'
-      const next: 'histogram' | 'km' = current === 'histogram' ? 'km' : 'histogram'
-      const updated: Record<string, 'histogram' | 'km'> = { ...prev, [key]: next }
-      try {
-        localStorage.setItem(`survivalPrefs_${identifier}`, JSON.stringify(updated))
-      } catch (error) {
-        console.error('Failed to save survival view preferences:', error)
-      }
-      return updated
-    })
-  }
 
   // Dashboard chart management
   const isOnDashboard = (tableName: string, columnName: string): boolean => {
@@ -579,290 +299,8 @@ function DatasetExplorer() {
     }).length
   }
 
-  const getDashboardChartKey = (chart: { tableName: string; columnName: string; countByTarget: string | null }) =>
-    `${chart.tableName}:${chart.columnName}:${chart.countByTarget ?? 'rows'}`
 
-  const registerDashboardCard = useCallback(
-    (key: string) => (node: HTMLDivElement | null) => {
-      const observer = dashboardObserverRef.current
-      const prevNode = dashboardCardRefs.current[key]
-      if (prevNode) {
-        if (observer) {
-          observer.unobserve(prevNode)
-        }
-        dashboardElementKeyMap.current.delete(prevNode)
-      }
-      if (!node) {
-        dashboardCardRefs.current[key] = null
-        return
-      }
-      dashboardCardRefs.current[key] = node
-      if (observer) {
-        dashboardElementKeyMap.current.set(node, key)
-        observer.observe(node)
-      }
-    },
-    []
-  )
 
-  // Saved dashboard management
-  const saveDashboard = async (name: string) => {
-    const newDashboard: SavedDashboard = {
-      id: `dashboard_${Date.now()}`,
-      name,
-      charts: [...dashboardCharts],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-
-    try {
-      // Save to database
-      await api.post(`/datasets/${identifier}/dashboards`, {
-        dashboard_id: newDashboard.id,
-        dashboard_name: newDashboard.name,
-        charts: newDashboard.charts,
-        is_most_recent: false
-      })
-
-      // Update local state
-      setSavedDashboards(prev => [...prev, newDashboard])
-      setShowSaveDashboardDialog(false)
-      setNewDashboardName('')
-    } catch (error) {
-      console.error('Failed to save dashboard:', error)
-      alert('Failed to save dashboard. Please try again.')
-    }
-  }
-
-  const loadDashboard = (dashboardId: string) => {
-    const dashboard = savedDashboards.find(d => d.id === dashboardId)
-    if (dashboard) {
-      setDashboardCharts(normalizeDashboardCharts(dashboard.charts))
-      setActiveDashboardId(dashboardId)
-    }
-  }
-
-  const deleteDashboard = async (dashboardId: string) => {
-    try {
-      // Delete from database
-      await api.delete(`/datasets/${identifier}/dashboards/${dashboardId}`)
-
-      // Update local state
-      setSavedDashboards(prev => prev.filter(d => d.id !== dashboardId))
-      if (activeDashboardId === dashboardId) {
-        setActiveDashboardId(null)
-      }
-    } catch (error) {
-      console.error('Failed to delete dashboard:', error)
-      alert('Failed to delete dashboard. Please try again.')
-    }
-  }
-
-  const renameDashboard = async (dashboardId: string, newName: string) => {
-    const dashboard = savedDashboards.find(d => d.id === dashboardId)
-    if (!dashboard) return
-
-    try {
-      // Update in database
-      await api.post(`/datasets/${identifier}/dashboards`, {
-        dashboard_id: dashboardId,
-        dashboard_name: newName,
-        charts: dashboard.charts,
-        is_most_recent: false
-      })
-
-      // Update local state
-      setSavedDashboards(prev => prev.map(d =>
-        d.id === dashboardId
-          ? { ...d, name: newName, updatedAt: new Date().toISOString() }
-          : d
-      ))
-      setEditingDashboardId(null)
-      setEditingDashboardName('')
-    } catch (error) {
-      console.error('Failed to rename dashboard:', error)
-      alert('Failed to rename dashboard. Please try again.')
-    }
-  }
-
-  // Load view preferences from localStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`viewPrefs_${identifier}`)
-      if (stored) {
-        setViewPreferences(JSON.parse(stored))
-      }
-    } catch (error) {
-      console.error('Failed to load view preferences:', error)
-    }
-  }, [identifier])
-
-  // Load "Most Recent" dashboard from database on mount (only once)
-  useEffect(() => {
-    if (!identifier || dashboardInitialized.current) return
-
-    const loadMostRecentDashboard = async () => {
-      try {
-        // Try to load from API first
-        const response = await api.get(`/datasets/${identifier}/dashboards`)
-        const dashboards = response.data.dashboards || []
-        const mostRecent = dashboards.find((d: any) => d.is_most_recent)
-
-        if (mostRecent) {
-          setDashboardCharts(normalizeDashboardCharts(mostRecent.charts))
-        } else {
-          // Migration: check localStorage for legacy data
-          const key = `dashboard_${identifier}`
-          const stored = localStorage.getItem(key)
-          if (stored) {
-            const charts = JSON.parse(stored)
-            setDashboardCharts(normalizeDashboardCharts(charts))
-            // Migrate to database
-            if (charts.length > 0) {
-              await api.post(`/datasets/${identifier}/dashboards`, {
-                dashboard_id: 'most_recent',
-                dashboard_name: 'Most Recent',
-                charts,
-                is_most_recent: true
-              })
-            }
-            // Clear localStorage after migration
-            localStorage.removeItem(key)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load most recent dashboard:', error)
-        // Fallback to localStorage if API fails
-        try {
-          const key = `dashboard_${identifier}`
-          const stored = localStorage.getItem(key)
-          if (stored) {
-            setDashboardCharts(normalizeDashboardCharts(JSON.parse(stored)))
-          }
-        } catch (e) {
-          console.error('Failed to load from localStorage:', e)
-        }
-      } finally {
-        setTimeout(() => {
-          dashboardInitialized.current = true
-        }, 50)
-      }
-    }
-
-    loadMostRecentDashboard()
-  }, [identifier])
-
-  // Save "Most Recent" dashboard to database when changed (only after initial load)
-  useEffect(() => {
-    if (!dashboardInitialized.current || !identifier) return
-
-    const saveMostRecentDashboard = async () => {
-      try {
-        await api.post(`/datasets/${identifier}/dashboards`, {
-          dashboard_id: 'most_recent',
-          dashboard_name: 'Most Recent',
-          charts: dashboardCharts,
-          is_most_recent: true
-        })
-      } catch (error) {
-        console.error('Failed to save most recent dashboard:', error)
-        // Fallback to localStorage if API fails
-        try {
-          const key = `dashboard_${identifier}`
-          localStorage.setItem(key, JSON.stringify(dashboardCharts))
-        } catch (e) {
-          console.error('Failed to save to localStorage:', e)
-        }
-      }
-    }
-
-    saveMostRecentDashboard()
-  }, [dashboardCharts, identifier])
-
-  // Load saved dashboards from database on mount (only once)
-  useEffect(() => {
-    if (!identifier || savedDashboardsInitialized.current) return
-
-    const loadSavedDashboards = async () => {
-      try {
-        // Try to load from API first
-        const response = await api.get(`/datasets/${identifier}/dashboards`)
-        const dashboards = response.data.dashboards || []
-
-        // Filter out "Most Recent" (is_most_recent = true)
-        const savedOnly = dashboards
-          .filter((d: any) => !d.is_most_recent)
-          .map((d: any) => ({
-            id: d.dashboard_id,
-            name: d.dashboard_name,
-            charts: d.charts,
-            createdAt: d.created_at,
-            updatedAt: d.updated_at
-          }))
-
-        setSavedDashboards(savedOnly)
-
-        // Migration: check localStorage for legacy data
-        const key = `savedDashboards_${identifier}`
-        const stored = localStorage.getItem(key)
-        if (stored) {
-          const localDashboards = JSON.parse(stored)
-
-          // Migrate each dashboard to database
-          for (const dashboard of localDashboards) {
-            try {
-              await api.post(`/datasets/${identifier}/dashboards`, {
-                dashboard_id: dashboard.id,
-                dashboard_name: dashboard.name,
-                charts: dashboard.charts,
-                is_most_recent: false
-              })
-            } catch (err) {
-              console.error(`Failed to migrate dashboard ${dashboard.id}:`, err)
-            }
-          }
-
-          // Clear localStorage after migration
-          localStorage.removeItem(key)
-
-          // Reload dashboards after migration
-          const updatedResponse = await api.get(`/datasets/${identifier}/dashboards`)
-          const updatedDashboards = updatedResponse.data.dashboards || []
-          const updatedSavedOnly = updatedDashboards
-            .filter((d: any) => !d.is_most_recent)
-            .map((d: any) => ({
-              id: d.dashboard_id,
-              name: d.dashboard_name,
-              charts: d.charts,
-              createdAt: d.created_at,
-              updatedAt: d.updated_at
-            }))
-          setSavedDashboards(updatedSavedOnly)
-        }
-      } catch (error) {
-        console.error('Failed to load saved dashboards from database:', error)
-        // Fallback to localStorage if API fails
-        try {
-          const key = `savedDashboards_${identifier}`
-          const stored = localStorage.getItem(key)
-          if (stored) {
-            setSavedDashboards(JSON.parse(stored))
-          }
-        } catch (e) {
-          console.error('Failed to load from localStorage:', e)
-        }
-      } finally {
-        setTimeout(() => {
-          savedDashboardsInitialized.current = true
-        }, 50)
-      }
-    }
-
-    loadSavedDashboards()
-  }, [identifier])
-
-  // Note: Saved dashboards are now persisted individually through save/update/delete functions
-  // No need for a bulk save effect since each operation updates the database directly
 
   // Restore filters from URL hash on mount
   useEffect(() => {
@@ -935,73 +373,12 @@ function DatasetExplorer() {
     }
   }, [filters, countBySelections, location.pathname, location.search, location.hash, navigate, identifier])
 
-  // Load presets from localStorage on mount
-  useEffect(() => {
-    if (identifier) {
-      setPresets(loadPresetsFromLocalStorage(localStorage, identifier))
-    }
-  }, [identifier])
 
   useEffect(() => {
     if (!countByReady) return
     loadDataset()
   }, [id, database, countByReady])
 
-  useEffect(() => {
-    if (!intersectionObserverAvailable) return
-    const observer = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        const key = dashboardElementKeyMap.current.get(entry.target)
-        if (!key || !entry.isIntersecting) return
-        setVisibleDashboardKeys(prev => {
-          if (prev[key]) return prev
-          return { ...prev, [key]: true }
-        })
-        observer.unobserve(entry.target)
-        dashboardElementKeyMap.current.delete(entry.target)
-      })
-    }, { threshold: 0.1 })
-    dashboardObserverRef.current = observer
-    Object.entries(dashboardCardRefs.current).forEach(([key, node]) => {
-      if (node) {
-        dashboardElementKeyMap.current.set(node, key)
-        observer.observe(node)
-      }
-    })
-    return () => observer.disconnect()
-  }, [intersectionObserverAvailable])
-
-  useEffect(() => {
-    if (intersectionObserverAvailable) return
-    setVisibleDashboardKeys(prev => {
-      let changed = false
-      const next = { ...prev }
-      dashboardCharts.forEach(chart => {
-        const key = getDashboardChartKey(chart)
-        if (!next[key]) {
-          next[key] = true
-          changed = true
-        }
-      })
-      return changed ? next : prev
-    })
-  }, [dashboardCharts, intersectionObserverAvailable])
-
-  useEffect(() => {
-    setVisibleDashboardKeys(prev => {
-      const allowed = new Set(dashboardCharts.map(chart => getDashboardChartKey(chart)))
-      let changed = false
-      const next: Record<string, boolean> = {}
-      Object.entries(prev).forEach(([key, value]) => {
-        if (allowed.has(key)) {
-          next[key] = value
-        } else {
-          changed = true
-        }
-      })
-      return changed ? next : prev
-    })
-  }, [dashboardCharts])
 
   useEffect(() => {
     if (!dataset?.tables) {
@@ -1854,15 +1231,6 @@ function DatasetExplorer() {
    */
   const getFilterTableNameForCacheKey = (filter: Filter): string | undefined => filter.tableName
 
-  const normalizeDashboardCharts = (charts: Array<{ tableName: string; columnName: string; countByTarget?: string | null; addedAt: string }>) => {
-    return charts.map(chart => ({
-      tableName: chart.tableName,
-      columnName: chart.columnName,
-      countByTarget: chart.countByTarget ?? null,
-      addedAt: chart.addedAt || new Date().toISOString()
-    }))
-  }
-
   // Helper: Get all effective filters (direct + propagated) for all tables
   const getAllEffectiveFilters = (): Record<string, { direct: Filter[]; propagated: Filter[] }> => {
     if (!dataset) return {}
@@ -2179,65 +1547,11 @@ function DatasetExplorer() {
   }, [chartCountOverrides, identifier])
 
   useEffect(() => {
-    setShowSettingsMenu(false)
-  }, [identifier])
-
-  useEffect(() => {
-    if (!showSettingsMenu) return
-
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as Node
-      if (
-        settingsMenuRef.current &&
-        !settingsMenuRef.current.contains(target) &&
-        !settingsButtonRef.current?.contains(target)
-      ) {
-        setShowSettingsMenu(false)
-      }
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setShowSettingsMenu(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClick)
-    document.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('mousedown', handleClick)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [showSettingsMenu])
-
-  useEffect(() => {
     if (!activeCountMenuKey) return
     const handleClick = () => setActiveCountMenuKey(null)
     document.addEventListener('click', handleClick)
     return () => document.removeEventListener('click', handleClick)
   }, [activeCountMenuKey])
-
-  // Re-load chart label preference when identifier changes
-  useEffect(() => {
-    const storageKey = `${CHART_LABEL_STORAGE_PREFIX}${identifier}`
-    const stored = localStorage.getItem(storageKey) ?? localStorage.getItem(`pieLabels_${identifier}`)
-    setShowPercentageLabels(stored === 'percent')
-  }, [identifier])
-
-  // Re-load survival view preferences when identifier changes
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`survivalPrefs_${identifier}`)
-      if (stored) {
-        setSurvivalViewPreferences(JSON.parse(stored))
-      } else {
-        setSurvivalViewPreferences({})
-      }
-    } catch {
-      setSurvivalViewPreferences({})
-    }
-  }, [identifier])
 
   useEffect(() => {
     if (countByInitialized.current) return
