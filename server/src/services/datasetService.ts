@@ -238,10 +238,10 @@ export class DatasetService {
       if (!targetTable) {
         throw new Error(`Target table ${targetTableId} not found`)
       }
-      
+
       cleanTableName = targetTable.table_name
       fullTableName = targetTable.clickhouse_table_name
-      
+
       await this.importIntoExistingTable(
         datasetId,
         dataset.database_name,
@@ -283,7 +283,7 @@ export class DatasetService {
         `,
         query_params: { datasetId, tableId: targetTableId, rowCount }
       })
-      
+
       // Return updated table info (merging with existing)
       const targetTable = dataset.tables?.find(t => t.table_id === targetTableId)!
       return {
@@ -397,12 +397,12 @@ export class DatasetService {
     newColumns: ColumnMetadata[]
   ): Promise<void> {
     const fullTableName = `${escapeIdentifier(databaseName)}.${escapeIdentifier(tableName)}`
-    
+
     const result = await clickhouseClient.query({
       query: `DESCRIBE TABLE ${fullTableName}`,
       format: 'JSONEachRow'
     })
-    const existingCols = await result.json<{name: string, type: string}>()
+    const existingCols = await result.json<{ name: string, type: string }>()
     const existingColNames = new Set(existingCols.map(c => c.name))
 
     const columnsToAdd = newColumns.filter(c => !existingColNames.has(c.name))
@@ -410,49 +410,49 @@ export class DatasetService {
     const columnValues = []
 
     for (const col of columnsToAdd) {
-        let columnType: string = col.type
-        if (col.isListColumn) {
-          columnType = 'Array(String)'
-        } else {
-          // New columns should generally be nullable as existing rows won't have values
-          columnType = `Nullable(${col.type})`
-        }
-        
-        await clickhouseClient.command({
-            query: `ALTER TABLE ${fullTableName} ADD COLUMN ${escapeIdentifier(col.name)} ${columnType}`
-        })
+      let columnType: string = col.type
+      if (col.isListColumn) {
+        columnType = 'Array(String)'
+      } else {
+        // New columns should generally be nullable as existing rows won't have values
+        columnType = `Nullable(${col.type})`
+      }
 
-        // Analyze and register new column metadata
-        const analysis = await analyzeColumn(
-          fullTableName,
-          col.name,
-          col.type
-        )
+      await clickhouseClient.command({
+        query: `ALTER TABLE ${fullTableName} ADD COLUMN ${escapeIdentifier(col.name)} ${columnType}`
+      })
 
-        const finalPriority = col.userPriority !== undefined ? col.userPriority : analysis.display_priority
+      // Analyze and register new column metadata
+      const analysis = await analyzeColumn(
+        fullTableName,
+        col.name,
+        col.type
+      )
 
-        columnValues.push({
-          dataset_id: datasetId,
-          table_id: tableName,
-          column_name: col.name,
-          column_type: col.type,
-          column_index: existingCols.length + columnValues.length, // Append to end
-          is_nullable: true, // Added columns are nullable
-          display_name: col.displayName || '',
-          description: col.description || '',
-          user_data_type: col.userDataType || '',
-          user_priority: col.userPriority !== undefined ? col.userPriority : null,
-          display_type: analysis.display_type,
-          unique_value_count: analysis.unique_value_count,
-          null_count: analysis.null_count,
-          min_value: analysis.min_value,
-          max_value: analysis.max_value,
-          suggested_chart: analysis.suggested_chart,
-          display_priority: finalPriority,
-          is_hidden: analysis.is_hidden,
-          is_list_column: col.isListColumn || false,
-          list_syntax: col.listSyntax || ''
-        })
+      const finalPriority = col.userPriority !== undefined ? col.userPriority : analysis.display_priority
+
+      columnValues.push({
+        dataset_id: datasetId,
+        table_id: tableName,
+        column_name: col.name,
+        column_type: col.type,
+        column_index: existingCols.length + columnValues.length, // Append to end
+        is_nullable: true, // Added columns are nullable
+        display_name: col.displayName || '',
+        description: col.description || '',
+        user_data_type: col.userDataType || '',
+        user_priority: col.userPriority !== undefined ? col.userPriority : null,
+        display_type: analysis.display_type,
+        unique_value_count: analysis.unique_value_count,
+        null_count: analysis.null_count,
+        min_value: analysis.min_value,
+        max_value: analysis.max_value,
+        suggested_chart: analysis.suggested_chart,
+        display_priority: finalPriority,
+        is_hidden: analysis.is_hidden,
+        is_list_column: col.isListColumn || false,
+        list_syntax: col.listSyntax || ''
+      })
     }
 
     if (columnValues.length > 0) {
@@ -483,44 +483,44 @@ export class DatasetService {
         query: `TRUNCATE TABLE ${fullTableName}`
       })
     } else if (importMode === 'upsert' && primaryKey) {
-        // Upsert Logic: Delete existing rows matching PKs, then Insert
-        const pkIndex = parsedData.columns.findIndex(c => c.name === primaryKey)
-        
-        if (pkIndex !== -1) {
-             // Create temp table to hold new data for efficient PK matching
-             const tempTable = `${tableName}_temp_${uuidv4().replace(/-/g, '')}`
-             const fullTempTable = `${escapeIdentifier(databaseName)}.${tempTable}`
-             
-             // Create temp table with same structure as main table
-             await clickhouseClient.command({
-                 query: `CREATE TABLE ${fullTempTable} AS ${fullTableName}`
-             })
-             
-             try {
-               // Insert new data into temp table
-               await this.insertData(databaseName, tempTable, parsedData.columns, parsedData.rows)
-               
-               // Delete rows from main table that exist in temp table (by PK)
-               // Note: This mutation is async.
-               await clickhouseClient.command({
-                   query: `ALTER TABLE ${fullTableName} DELETE WHERE ${escapeIdentifier(primaryKey)} IN (SELECT ${escapeIdentifier(primaryKey)} FROM ${fullTempTable}) SETTINGS mutations_sync = 1`
-               })
-               
-               // Insert all rows from temp table into main table
-               await clickhouseClient.command({
-                   query: `INSERT INTO ${fullTableName} SELECT * FROM ${fullTempTable}`
-               })
-             } finally {
-               // Clean up temp table
-               await clickhouseClient.command({
-                   query: `DROP TABLE IF EXISTS ${fullTempTable}`
-               })
-             }
-             
-             return // Done
-        } else {
-          console.warn(`Upsert requested but primary key '${primaryKey}' not found in new data columns. Falling back to append.`)
+      // Upsert Logic: Delete existing rows matching PKs, then Insert
+      const pkIndex = parsedData.columns.findIndex(c => c.name === primaryKey)
+
+      if (pkIndex !== -1) {
+        // Create temp table to hold new data for efficient PK matching
+        const tempTable = `${tableName}_temp_${uuidv4().replace(/-/g, '')}`
+        const fullTempTable = `${escapeIdentifier(databaseName)}.${tempTable}`
+
+        // Create temp table with same structure as main table
+        await clickhouseClient.command({
+          query: `CREATE TABLE ${fullTempTable} AS ${fullTableName}`
+        })
+
+        try {
+          // Insert new data into temp table
+          await this.insertData(databaseName, tempTable, parsedData.columns, parsedData.rows)
+
+          // Delete rows from main table that exist in temp table (by PK)
+          // Note: This mutation is async.
+          await clickhouseClient.command({
+            query: `ALTER TABLE ${fullTableName} DELETE WHERE ${escapeIdentifier(primaryKey)} IN (SELECT ${escapeIdentifier(primaryKey)} FROM ${fullTempTable}) SETTINGS mutations_sync = 1`
+          })
+
+          // Insert all rows from temp table into main table
+          await clickhouseClient.command({
+            query: `INSERT INTO ${fullTableName} SELECT * FROM ${fullTempTable}`
+          })
+        } finally {
+          // Clean up temp table
+          await clickhouseClient.command({
+            query: `DROP TABLE IF EXISTS ${fullTempTable}`
+          })
         }
+
+        return // Done
+      } else {
+        console.warn(`Upsert requested but primary key '${primaryKey}' not found in new data columns. Falling back to append.`)
+      }
     }
 
     // Default Append (or Replace after Truncate)
@@ -1303,7 +1303,11 @@ export class DatasetService {
 
     // Delete the old row
     await clickhouseClient.command({
-      query: 'DELETE FROM biai.dataset_columns WHERE dataset_id = {datasetId:String} AND table_id = {tableId:String} AND column_name = {columnName:String}',
+      query: `
+        DELETE FROM biai.dataset_columns
+        WHERE dataset_id = {datasetId:String} AND table_id = {tableId:String} AND column_name = {columnName:String}
+        SETTINGS mutations_sync = 1
+      `,
       query_params: { datasetId, tableId, columnName }
     })
 
@@ -1338,6 +1342,42 @@ export class DatasetService {
       return { database, table }
     }
     return { database: 'biai', table: tableName }
+  }
+
+  async updateTableMetadata(
+    datasetId: string,
+    tableId: string,
+    updates: { displayName?: string }
+  ): Promise<void> {
+    if (updates.displayName !== undefined) {
+      await clickhouseClient.command({
+        query: `
+          ALTER TABLE biai.dataset_tables
+          UPDATE display_name = {displayName:String}
+          WHERE dataset_id = {datasetId:String} AND table_id = {tableId:String}
+          SETTINGS mutations_sync = 1
+        `,
+        query_params: {
+          datasetId,
+          tableId,
+          displayName: updates.displayName
+        }
+      })
+    }
+  }
+
+
+  async updateDatasetTimestamp(datasetId: string): Promise<void> {
+    // Update ClickHouse
+    await clickhouseClient.command({
+      query: `
+        ALTER TABLE biai.datasets_metadata
+        UPDATE updated_at = now()
+        WHERE dataset_id = {datasetId:String}
+        SETTINGS mutations_sync = 1
+      `,
+      query_params: { datasetId }
+    })
   }
 
   async deleteDataset(datasetId: string): Promise<void> {

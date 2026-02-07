@@ -940,10 +940,10 @@ describe('DatasetExplorer', () => {
       fireEvent.click(customersTab)
 
       await waitFor(() => {
-        // Verify Customers table content (100 rows)
-        // Using stricter text match or querying within a region would be better,
-        // but looking for "100 rows" which is unique to Customers is sufficient here.
-        expect(screen.getByText(/100\s+rows/i)).toBeInTheDocument()
+        // Verify Customers table section is visible using data-testid
+        const rowCountElement = screen.getByTestId('total-count-customers')
+        expect(rowCountElement).toBeInTheDocument()
+        expect(rowCountElement).toHaveTextContent('100')
       })
 
       // Switch to Orders tab

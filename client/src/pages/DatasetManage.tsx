@@ -129,7 +129,7 @@ function DatasetManage() {
   const [selectedListColumns, setSelectedListColumns] = useState<Map<string, 'python' | 'json'>>(new Map())
   const [wasDelimiterDetected, setWasDelimiterDetected] = useState(false)
   const [detectedDelimiterName, setDetectedDelimiterName] = useState<string>('')
-  
+
   // Import configuration
   const [importTarget, setImportTarget] = useState<'new' | 'existing'>('new')
   const [targetTableId, setTargetTableId] = useState('')
@@ -139,6 +139,10 @@ function DatasetManage() {
   const [isSpreadsheet, setIsSpreadsheet] = useState(false)
   const [spreadsheetPreview, setSpreadsheetPreview] = useState<SpreadsheetPreview | null>(null)
   const [sheetConfigs, setSheetConfigs] = useState<SheetImportConfig[]>([])
+
+  // Table renaming state
+  const [renamingTableId, setRenamingTableId] = useState<string | null>(null)
+  const [renamingTableName, setRenamingTableName] = useState('')
 
   useEffect(() => {
     fetchDataset()
@@ -218,16 +222,16 @@ function DatasetManage() {
       // Reset auto-detect indicator when new file is selected
       setWasDelimiterDetected(false)
       setDetectedDelimiterName('')
-      
+
       const isSheet = file.name.match(/\.(xlsx|xls|ods)$/i)
       setIsSpreadsheet(!!isSheet)
-      
+
       if (!tableName) {
         const name = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9_]/gi, '_').toLowerCase()
         setTableName(name)
         setDisplayName(file.name.replace(/\.[^/.]+$/, ''))
       }
-      
+
       // Auto-trigger preview
       if (isSheet) {
         setTimeout(() => loadSpreadsheetPreview(file, null), 100)
@@ -240,10 +244,10 @@ function DatasetManage() {
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const url = e.target.value
     setFileUrl(url)
-    
+
     const isSheet = url.split('?')[0].match(/\.(xlsx|xls|ods)$/i)
     setIsSpreadsheet(!!isSheet)
-    
+
     if (!tableName && url) {
       // Extract filename from URL
       const urlPath = url.split('?')[0]
@@ -371,7 +375,7 @@ function DatasetManage() {
   const handleSpreadsheetImport = async () => {
     if (importMode === 'file' && !selectedFile) return
     if (importMode === 'url' && !fileUrl) return
-    
+
     const selectedSheets = sheetConfigs.filter(s => s.selected).map(s => ({
       sheetName: s.sheetName,
       tableName: s.tableName,
@@ -434,23 +438,23 @@ function DatasetManage() {
     const targets = []
     // Existing tables
     if (dataset) {
-      targets.push(...dataset.tables.map(t => ({ 
-        id: t.id, 
-        name: t.name, 
-        displayName: t.displayName, 
-        columns: t.columns.map(c => c.name) 
+      targets.push(...dataset.tables.map(t => ({
+        id: t.id,
+        name: t.name,
+        displayName: t.displayName,
+        columns: t.columns.map(c => c.name)
       })))
     }
     // Other selected sheets
     if (spreadsheetPreview && sheetConfigs) {
       spreadsheetPreview.sheets.forEach((s, idx) => {
         if (idx !== currentSheetIdx && sheetConfigs[idx]?.selected) {
-           targets.push({
-             id: sheetConfigs[idx].tableName,
-             name: sheetConfigs[idx].tableName,
-             displayName: `[New] ${sheetConfigs[idx].displayName}`,
-             columns: s.columns || []
-           })
+          targets.push({
+            id: sheetConfigs[idx].tableName,
+            name: sheetConfigs[idx].tableName,
+            displayName: `[New] ${sheetConfigs[idx].displayName}`,
+            columns: s.columns || []
+          })
         }
       })
     }
@@ -459,7 +463,7 @@ function DatasetManage() {
 
   const handleAddTable = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (isSpreadsheet) {
       return handleSpreadsheetImport()
     }
@@ -544,6 +548,33 @@ function DatasetManage() {
       console.error('Failed to load table data:', error)
     } finally {
       setLoadingData(false)
+    }
+  }
+
+  const handleRenameTable = async (tableId: string) => {
+    if (!renamingTableName.trim()) {
+      alert('Table name cannot be empty')
+      return
+    }
+
+    try {
+      await api.patch(`/datasets/${id}/tables/${tableId}`, { displayName: renamingTableName })
+
+      // Update local state
+      if (dataset) {
+        setDataset({
+          ...dataset,
+          tables: dataset.tables.map(t =>
+            t.id === tableId ? { ...t, displayName: renamingTableName } : t
+          )
+        })
+      }
+
+      setRenamingTableId(null)
+      setRenamingTableName('')
+    } catch (error) {
+      console.error('Failed to rename table:', error)
+      alert('Failed to rename table')
     }
   }
 
@@ -727,12 +758,12 @@ function DatasetManage() {
         prevColumns.map(col =>
           col.column_name === columnName
             ? {
-                ...col,
-                display_name: updates.displayName !== undefined ? updates.displayName : col.display_name,
-                description: updates.description !== undefined ? updates.description : col.description,
-                is_hidden: updates.isHidden !== undefined ? updates.isHidden : col.is_hidden,
-                display_type: updates.displayType !== undefined ? updates.displayType : col.display_type
-              }
+              ...col,
+              display_name: updates.displayName !== undefined ? updates.displayName : col.display_name,
+              description: updates.description !== undefined ? updates.description : col.description,
+              is_hidden: updates.isHidden !== undefined ? updates.isHidden : col.is_hidden,
+              display_type: updates.displayType !== undefined ? updates.displayType : col.display_type
+            }
             : col
         )
       )
@@ -1169,33 +1200,33 @@ function DatasetManage() {
                                   onChange={(e) => {
                                     const newConfigs = [...sheetConfigs]
                                     const val = e.target.value
-                                    
+
                                     if (val.startsWith('PENDING:')) {
-                                        const pendingName = val.substring(8)
-                                        newConfigs[idx].targetTableId = val // Store PENDING:name to keep dropdown selected
-                                        newConfigs[idx].tableName = pendingName
-                                        newConfigs[idx].importMode = 'append' // Merge implies append
-                                        
-                                        // Find the sheet that created this pending table to get its display name
-                                        const sourceSheet = sheetConfigs.find(s => s.tableName === pendingName && !s.targetTableId)
-                                        if (sourceSheet) {
-                                          newConfigs[idx].displayName = sourceSheet.displayName
-                                        }
+                                      const pendingName = val.substring(8)
+                                      newConfigs[idx].targetTableId = val // Store PENDING:name to keep dropdown selected
+                                      newConfigs[idx].tableName = pendingName
+                                      newConfigs[idx].importMode = 'append' // Merge implies append
+
+                                      // Find the sheet that created this pending table to get its display name
+                                      const sourceSheet = sheetConfigs.find(s => s.tableName === pendingName && !s.targetTableId)
+                                      if (sourceSheet) {
+                                        newConfigs[idx].displayName = sourceSheet.displayName
+                                      }
                                     } else {
-                                        newConfigs[idx].targetTableId = val
-                                        if (val) {
-                                          // If selecting existing table, default to append
-                                          newConfigs[idx].importMode = 'append'
-                                          // Update display name to match existing table
-                                          const existingTable = dataset?.tables.find(t => t.id === val)
-                                          if (existingTable) {
-                                            newConfigs[idx].displayName = existingTable.displayName
-                                          }
-                                        } else {
-                                          newConfigs[idx].importMode = 'append' // Reset
-                                          // Reset display name to sheet name if switching back to New Table
-                                          newConfigs[idx].displayName = config.sheetName
+                                      newConfigs[idx].targetTableId = val
+                                      if (val) {
+                                        // If selecting existing table, default to append
+                                        newConfigs[idx].importMode = 'append'
+                                        // Update display name to match existing table
+                                        const existingTable = dataset?.tables.find(t => t.id === val)
+                                        if (existingTable) {
+                                          newConfigs[idx].displayName = existingTable.displayName
                                         }
+                                      } else {
+                                        newConfigs[idx].importMode = 'append' // Reset
+                                        // Reset display name to sheet name if switching back to New Table
+                                        newConfigs[idx].displayName = config.sheetName
+                                      }
                                     }
                                     setSheetConfigs(newConfigs)
                                   }}
@@ -1204,10 +1235,10 @@ function DatasetManage() {
                                   <option value="">New Table</option>
                                   {/* Add pending tables from previous selected sheets */}
                                   {sheetConfigs.map((s, sIdx) => {
-                                      if (sIdx < idx && s.selected && s.tableName && !s.targetTableId) {
-                                          return <option key={`pending-${sIdx}`} value={`PENDING:${s.tableName}`}>{s.tableName} (New)</option>
-                                      }
-                                      return null
+                                    if (sIdx < idx && s.selected && s.tableName && !s.targetTableId) {
+                                      return <option key={`pending-${sIdx}`} value={`PENDING:${s.tableName}`}>{s.tableName} (New)</option>
+                                    }
+                                    return null
                                   })}
                                   {dataset?.tables.map(t => (
                                     <option key={t.id} value={t.id}>{t.displayName}</option>
@@ -1299,7 +1330,7 @@ function DatasetManage() {
                             {!config.targetTableId && (
                               <div style={{ marginBottom: '1rem' }}>
                                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>Relationships</label>
-                                
+
                                 {/* List existing */}
                                 {config.relationships && config.relationships.length > 0 && (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.5rem' }}>
@@ -1331,15 +1362,15 @@ function DatasetManage() {
                                     </div>
                                     <div>
                                       <label style={{ display: 'block', fontSize: '0.7rem' }}>Ref Table</label>
-                                      <select 
-                                        id={`sheet-fk-table-${idx}`} 
+                                      <select
+                                        id={`sheet-fk-table-${idx}`}
                                         style={{ width: '100%', fontSize: '0.75rem', padding: '0.25rem' }}
                                         onChange={(e) => {
                                           const targets = getPotentialTargets(idx)
                                           const target = targets.find(t => t.id === e.target.value)
                                           const colSelect = document.getElementById(`sheet-fk-refcol-${idx}`) as HTMLSelectElement
                                           if (colSelect && target) {
-                                            colSelect.innerHTML = '<option value="">Select...</option>' + 
+                                            colSelect.innerHTML = '<option value="">Select...</option>' +
                                               target.columns.map(c => `<option value="${c}">${c}</option>`).join('')
                                           }
                                         }}
@@ -1363,11 +1394,11 @@ function DatasetManage() {
                                         const colSelect = document.getElementById(`sheet-fk-col-${idx}`) as HTMLSelectElement
                                         const tableSelect = document.getElementById(`sheet-fk-table-${idx}`) as HTMLSelectElement
                                         const refColSelect = document.getElementById(`sheet-fk-refcol-${idx}`) as HTMLSelectElement
-                                        
+
                                         if (colSelect.value && tableSelect.value && refColSelect.value) {
                                           const targets = getPotentialTargets(idx)
                                           const target = targets.find(t => t.id === tableSelect.value)
-                                          
+
                                           addSheetRelationship(idx, {
                                             foreignKey: colSelect.value,
                                             referencedTable: tableSelect.value,
@@ -1375,7 +1406,7 @@ function DatasetManage() {
                                             type: 'many-to-one',
                                             referencedTableDisplayName: target?.displayName || tableSelect.value
                                           })
-                                          
+
                                           // Reset
                                           colSelect.value = ''
                                           tableSelect.value = ''
@@ -1389,16 +1420,16 @@ function DatasetManage() {
                                 </details>
                               </div>
                             )}
-                            
+
                             {spreadsheetPreview.sheets[idx].preview && (
                               <details>
                                 <summary style={{ fontSize: '0.75rem', cursor: 'pointer', color: '#2196F3' }}>
                                   Preview Data
                                 </summary>
-                                <div style={{ 
-                                  marginTop: '0.5rem', 
-                                  overflowX: 'auto', 
-                                  maxHeight: '200px', 
+                                <div style={{
+                                  marginTop: '0.5rem',
+                                  overflowX: 'auto',
+                                  maxHeight: '200px',
                                   border: '1px solid #eee',
                                   borderRadius: '4px'
                                 }}>
@@ -1527,52 +1558,52 @@ function DatasetManage() {
                         dr.foreignKey === r.foreignKey && dr.referencedTable === r.referencedTable
                       )
                     ).length > 0 && (
-                      <div style={{ marginBottom: '0.5rem' }}>
-                        <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.5rem' }}>
-                          Manually added:
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          {confirmedRelationships.filter(r =>
-                            !previewData.detectedRelationships?.some((dr: any) =>
-                              dr.foreignKey === r.foreignKey && dr.referencedTable === r.referencedTable
-                            )
-                          ).map((rel: any, idx: number) => (
-                            <div key={idx} style={{
-                              padding: '0.75rem',
-                              background: '#e3f2fd',
-                              borderRadius: '4px',
-                              border: '1px solid #2196F3',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between'
-                            }}>
-                              <div>
-                                <strong>{rel.foreignKey}</strong> → {rel.referencedTable}.{rel.referencedColumn}
+                        <div style={{ marginBottom: '0.5rem' }}>
+                          <div style={{ fontSize: '0.875rem', color: '#666', marginBottom: '0.5rem' }}>
+                            Manually added:
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {confirmedRelationships.filter(r =>
+                              !previewData.detectedRelationships?.some((dr: any) =>
+                                dr.foreignKey === r.foreignKey && dr.referencedTable === r.referencedTable
+                              )
+                            ).map((rel: any, idx: number) => (
+                              <div key={idx} style={{
+                                padding: '0.75rem',
+                                background: '#e3f2fd',
+                                borderRadius: '4px',
+                                border: '1px solid #2196F3',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between'
+                              }}>
+                                <div>
+                                  <strong>{rel.foreignKey}</strong> → {rel.referencedTable}.{rel.referencedColumn}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConfirmedRelationships(confirmedRelationships.filter(r =>
+                                      !(r.foreignKey === rel.foreignKey && r.referencedTable === rel.referencedTable)
+                                    ))
+                                  }}
+                                  style={{
+                                    background: '#f44336',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '0.25rem 0.5rem',
+                                    cursor: 'pointer',
+                                    fontSize: '0.75rem'
+                                  }}
+                                >
+                                  Remove
+                                </button>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setConfirmedRelationships(confirmedRelationships.filter(r =>
-                                    !(r.foreignKey === rel.foreignKey && r.referencedTable === rel.referencedTable)
-                                  ))
-                                }}
-                                style={{
-                                  background: '#f44336',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  padding: '0.25rem 0.5rem',
-                                  cursor: 'pointer',
-                                  fontSize: '0.75rem'
-                                }}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
                     {/* Add manual relationship */}
                     {dataset && dataset.tables.length > 0 && (
@@ -1807,11 +1838,11 @@ function DatasetManage() {
                   cursor: uploading ? 'not-allowed' : 'pointer'
                 }}
               >
-                {uploading 
-                  ? 'Adding...' 
-                  : (isSpreadsheet && sheetConfigs.filter(s => s.selected).length > 1 
-                      ? `Add ${sheetConfigs.filter(s => s.selected).length} Tables` 
-                      : 'Add Table')}
+                {uploading
+                  ? 'Adding...'
+                  : (isSpreadsheet && sheetConfigs.filter(s => s.selected).length > 1
+                    ? `Add ${sheetConfigs.filter(s => s.selected).length} Tables`
+                    : 'Add Table')}
               </button>
             </form>
           </div>
@@ -1821,6 +1852,7 @@ function DatasetManage() {
           {dataset.tables.map((table) => (
             <div
               key={table.id}
+              data-testid={`table-card-${table.name}`}
               style={{
                 background: 'white',
                 padding: '1.5rem',
@@ -1831,7 +1863,60 @@ function DatasetManage() {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
                 <div>
-                  <h4 style={{ margin: '0 0 0.5rem 0' }}>{table.displayName}</h4>
+                  <h4 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {renamingTableId === table.id ? (
+                      <>
+                        <input
+                          type="text"
+                          data-testid="rename-table-input"
+                          value={renamingTableName}
+                          onChange={(e) => setRenamingTableName(e.target.value)}
+                          style={{ fontSize: '0.9rem', padding: '0.25rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRenameTable(table.id)
+                            if (e.key === 'Escape') setRenamingTableId(null)
+                          }}
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <button
+                          data-testid="save-rename-btn"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleRenameTable(table.id)
+                          }}
+                          style={{ padding: '0.25rem 0.5rem', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem' }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setRenamingTableId(null)
+                          }}
+                          style={{ padding: '0.25rem 0.5rem', background: '#ccc', color: 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem' }}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {table.displayName}
+                        <button
+                          data-testid="rename-table-btn"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setRenamingTableId(table.id)
+                            setRenamingTableName(table.displayName)
+                          }}
+                          style={{ padding: '0.25rem', background: 'none', border: 'none', cursor: 'pointer', color: '#666', fontSize: '0.875rem' }}
+                          title="Rename Table"
+                        >
+                          ✏️
+                        </button>
+                      </>
+                    )}
+                  </h4>
                   <div style={{ fontSize: '0.875rem', color: '#666' }}>
                     <span>{table.filename}</span>
                     <span style={{ margin: '0 1rem' }}>•</span>
@@ -2010,7 +2095,7 @@ function DatasetManage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {columns.map((col) => (
-                  <div key={col.column_name} style={{
+                  <div key={col.column_name} data-testid={`column-card-${col.column_name}`} style={{
                     border: '1px solid #ddd',
                     borderRadius: '4px',
                     padding: '1rem',

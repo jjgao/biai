@@ -92,20 +92,45 @@ export async function apiDeleteDataset(datasetId: string): Promise<void> {
   if (!res.ok) throw new Error(`Delete dataset failed: ${res.status}`)
 }
 
+export async function apiAddRelationship(
+  datasetId: string,
+  tableId: string,
+  foreignKey: string,
+  referencedTableId: string,
+  referencedColumn: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/datasets/${datasetId}/tables/${tableId}/relationships`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      foreignKey,
+      referencedTableId,
+      referencedColumn,
+      type: 'many-to-one'
+    })
+  })
+  if (!res.ok) {
+    const errBody = await res.text()
+    throw new Error(`Add relationship failed: ${res.status} - ${errBody}`)
+  }
+}
+
 type TestFixtures = {
   apiHelpers: {
     createDataset: typeof apiCreateDataset
     uploadCSV: typeof apiUploadCSV
     deleteDataset: typeof apiDeleteDataset
+    addRelationship: typeof apiAddRelationship
   }
 }
 
 export const test = base.extend<TestFixtures>({
-  apiHelpers: async ({}, use) => {
+  apiHelpers: async ({ }, use) => {
     await use({
       createDataset: apiCreateDataset,
       uploadCSV: apiUploadCSV,
-      deleteDataset: apiDeleteDataset
+      deleteDataset: apiDeleteDataset,
+      addRelationship: apiAddRelationship
     })
   }
 })
