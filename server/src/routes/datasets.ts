@@ -285,7 +285,7 @@ router.post('/:id/tables/preview', upload.single('file'), async (req, res) => {
     if (tempFilePath) {
       try {
         await unlink(tempFilePath)
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return res.status(500).json({ error: 'Failed to preview table', message: error.message })
@@ -372,7 +372,7 @@ router.post('/:id/spreadsheets/preview', upload.single('file'), async (req, res)
     if (tempFilePath) {
       try {
         await unlink(tempFilePath)
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return res.status(500).json({ error: 'Failed to preview spreadsheet', message: error.message })
@@ -487,7 +487,7 @@ router.post('/:id/spreadsheets/import', upload.single('file'), async (req, res) 
     if (tempFilePath) {
       try {
         await unlink(tempFilePath)
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return res.status(500).json({ error: 'Failed to import spreadsheet', message: error.message })
@@ -633,7 +633,7 @@ router.post('/:id/tables', upload.single('file'), async (req, res) => {
     if (tempFilePath) {
       try {
         await unlink(tempFilePath)
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return res.status(500).json({ error: 'Failed to add table', message: error.message })
@@ -750,6 +750,24 @@ router.get('/:id/tables/:tableId/columns', async (req, res) => {
   } catch (error: any) {
     console.error('Get table columns error:', error)
     res.status(500).json({ error: 'Failed to get table columns', message: error.message })
+  }
+})
+
+// Update table metadata (e.g. rename)
+router.patch('/:id/tables/:tableId', async (req, res) => {
+  try {
+    const { displayName } = req.body
+
+    if (displayName) {
+      await datasetService.updateTableMetadata(req.params.id, req.params.tableId, {
+        displayName
+      })
+    }
+
+    return res.json({ success: true, message: 'Table metadata updated' })
+  } catch (error: any) {
+    console.error('Update table metadata error:', error)
+    return res.status(500).json({ error: 'Failed to update table metadata', message: error.message })
   }
 })
 
