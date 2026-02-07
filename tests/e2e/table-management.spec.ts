@@ -186,4 +186,38 @@ test.describe('Table Management', () => {
     // Verify on card
     await expect(treatmentsCard.getByText('patient_id → Patients.patient_id')).toBeVisible()
   })
+
+  test('delete table', async ({ page }) => {
+    await page.goto(`/datasets/${datasetId}/manage`)
+    await page.waitForLoadState('domcontentloaded')
+
+    // Verify all three tables are present
+    await expect(page.getByTestId('table-card-geographic')).toBeVisible()
+    await expect(page.getByTestId('table-card-patients')).toBeVisible()
+    await expect(page.getByTestId('table-card-treatments')).toBeVisible()
+
+    // Handle confirmation dialog
+    page.on('dialog', dialog => dialog.accept())
+
+    // Delete the treatments table
+    const treatmentsCard = page.getByTestId('table-card-treatments')
+    const deletePromise = page.waitForResponse(resp =>
+      resp.url().includes('/tables/') && resp.request().method() === 'DELETE' && resp.status() === 200
+    )
+    await treatmentsCard.getByRole('button', { name: 'Delete' }).click()
+    await deletePromise
+
+    // Verify treatments table is gone
+    await expect(page.getByTestId('table-card-treatments')).not.toBeVisible()
+
+    // Verify other tables still present
+    await expect(page.getByTestId('table-card-geographic')).toBeVisible()
+    await expect(page.getByTestId('table-card-patients')).toBeVisible()
+
+    // Verify persistence after reload
+    await page.reload()
+    await expect(page.getByTestId('table-card-geographic')).toBeVisible()
+    await expect(page.getByTestId('table-card-patients')).toBeVisible()
+    await expect(page.getByTestId('table-card-treatments')).not.toBeVisible()
+  })
 })
