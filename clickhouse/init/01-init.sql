@@ -8,6 +8,8 @@ USE biai;
 CREATE TABLE IF NOT EXISTS datasets_metadata (
     dataset_id String,
     dataset_name String,
+    database_name String DEFAULT '',
+    database_type String DEFAULT 'created',
     description String,
     tags Array(String) DEFAULT [],
     source String DEFAULT '',
