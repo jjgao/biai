@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import SafeHtml from '../../components/SafeHtml'
 import api from '../../services/api'
 import type { MetricPathSegment } from '../../types'
 import {
@@ -22,19 +21,16 @@ import { useFilterPresets } from './hooks/useFilterPresets'
 import { useViewPreferences } from './hooks/useViewPreferences'
 import { useDashboard } from './hooks/useDashboard'
 import { ChartProvider } from './components/ChartContext'
-import { PieChart } from './components/PieChart'
-import { BarChart } from './components/BarChart'
-import { TableViewChart } from './components/TableViewChart'
-import { HistogramChart } from './components/HistogramChart'
-import { SurvivalChart } from './components/SurvivalChart'
-import { MapChart } from './components/MapChart'
 import { ActiveFilters } from './components/ActiveFilters'
 import { ChartSettingsMenu } from './components/ChartSettingsMenu'
 import { SavedFiltersBar } from './components/SavedFiltersBar'
 import { PresetDialogs } from './components/PresetDialogs'
 import { DashboardDialogs } from './components/DashboardDialogs'
+import { DatasetHeader } from './components/DatasetHeader'
+import { TabBar } from './components/TabBar'
+import { DashboardView } from './components/DashboardView'
+import { TableSection } from './components/TableSection'
 import {
-  MAX_PIE_CATEGORIES,
   DASHBOARD_SCOPE_KEY,
   CACHE_TTL_MS,
   CACHE_MAX_ENTRIES_PER_TABLE,
@@ -1131,64 +1127,6 @@ function DatasetExplorer() {
     })
   }
 
-  const renderChartHeader = ({
-    title,
-    tooltip,
-    countIndicator,
-    actions,
-    isListColumn
-  }: {
-    title: string
-    tooltip?: string
-    countIndicator: React.ReactNode
-    actions?: React.ReactNode
-    isListColumn?: boolean
-  }) => (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '0.35rem',
-        marginBottom: '0.4rem'
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0, flex: 1 }}>
-        {countIndicator}
-        <h4
-          style={{
-            margin: 0,
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            cursor: tooltip ? 'help' : 'default',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            flex: 1
-          }}
-          title={tooltip}
-        >
-          {title}
-          {isListColumn && (
-            <span
-              style={{
-                marginLeft: '0.25rem',
-                fontSize: '0.65rem',
-                opacity: 0.7
-              }}
-              title="List column - items can appear in multiple rows"
-            >
-              📋
-            </span>
-          )}
-        </h4>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
-        {actions}
-      </div>
-    </div>
-  )
-
   const handleChartCountOverrideChange = (tableName: string, columnName: string, value: string) => {
     const defaultKey = getCountByCacheKey(tableName)
     if (value === defaultKey) {
@@ -1769,46 +1707,12 @@ function DatasetExplorer() {
     <ChartProvider value={chartContextValue}>
     <div>
       {/* Header */}
-      <div style={{ marginBottom: '2rem', background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', position: 'relative' }}>
-        <button
-          onClick={() => navigate(`/datasets/${id}/manage`)}
-          style={{
-            position: 'absolute',
-            top: '1.5rem',
-            right: '1.5rem',
-            padding: '0.5rem',
-            background: '#757575',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '1.2rem',
-            lineHeight: '1',
-            width: '32px',
-            height: '32px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-          title="Manage dataset"
-        >
-          ✎
-        </button>
-
-        <h2 style={{ marginTop: 0, paddingRight: '3rem' }}>{dataset.name}</h2>
-        {dataset.description && (
-          <SafeHtml
-            html={dataset.description}
-            style={{ color: '#666', margin: '0.5rem 0', display: 'block' }}
-          />
-        )}
-
-        <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem', fontSize: '0.875rem' }}>
-          <div>
-            <strong>Tables:</strong> {dataset.tables.length}
-          </div>
-        </div>
-      </div>
+      <DatasetHeader
+        name={dataset.name}
+        description={dataset.description}
+        tableCount={dataset.tables.length}
+        onManage={() => navigate(`/datasets/${id}/manage`)}
+      />
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-1rem', marginBottom: '0.5rem' }}>
         <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -1905,351 +1809,37 @@ function DatasetExplorer() {
         renameDashboard={renameDashboard}
       />
 
-      {/* Tab Navigation */}
-      <div style={{
-        marginBottom: '1.5rem',
-        background: 'white',
-        padding: '0.5rem',
-        borderRadius: '8px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-        display: 'flex',
-        gap: '0.5rem',
-        flexWrap: 'wrap'
-      }}>
-        {/* Dashboard Tab */}
-        <button
-          onClick={() => setActiveTab('dashboard')}
-          style={{
-            padding: '0.75rem 1.5rem',
-            background: activeTab === 'dashboard' ? '#607D8B' : 'transparent',
-            color: activeTab === 'dashboard' ? 'white' : '#333',
-            border: `2px solid ${activeTab === 'dashboard' ? '#607D8B' : '#E0E0E0'}`,
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '0.875rem',
-            fontWeight: activeTab === 'dashboard' ? 600 : 400,
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
-          onMouseEnter={(e) => {
-            if (activeTab !== 'dashboard') {
-              e.currentTarget.style.borderColor = '#607D8B'
-              e.currentTarget.style.color = '#607D8B'
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (activeTab !== 'dashboard') {
-              e.currentTarget.style.borderColor = '#E0E0E0'
-              e.currentTarget.style.color = '#333'
-            }
-          }}
-        >
-          <div style={{
-            width: '8px',
-            height: '20px',
-            borderRadius: '2px',
-            background: activeTab === 'dashboard' ? 'white' : '#607D8B'
-          }} />
-          Dashboard {dashboardCharts.length > 0 && `(${dashboardCharts.length})`}
-        </button>
-
-        {/* Table Tabs */}
-        {dataset.tables.map(table => {
-          const tableColor = getTableColor(table.name)
-          const isActive = activeTab === table.name
-          const chartCount = getTableChartCount(table.name)
-
-          return (
-            <button
-              key={table.name}
-              onClick={() => setActiveTab(table.name)}
-              style={{
-                padding: '0.75rem 1.5rem',
-                background: isActive ? tableColor : 'transparent',
-                color: isActive ? 'white' : '#333',
-                border: `2px solid ${isActive ? tableColor : '#E0E0E0'}`,
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: isActive ? 600 : 400,
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.borderColor = tableColor
-                  e.currentTarget.style.color = tableColor
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.borderColor = '#E0E0E0'
-                  e.currentTarget.style.color = '#333'
-                }
-              }}
-            >
-              <div style={{
-                width: '8px',
-                height: '20px',
-                borderRadius: '2px',
-                background: isActive ? 'white' : tableColor
-              }} />
-              {table.displayName || table.name} {chartCount > 0 && `(${chartCount})`}
-            </button>
-          )
-        })}
-      </div>
+      <TabBar
+        tables={dataset.tables}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        dashboardChartCount={dashboardCharts.length}
+        getTableColor={getTableColor}
+        getTableChartCount={getTableChartCount}
+      />
 
       {/* Dashboard View */}
       {activeTab === 'dashboard' && (
-        <div>
-          {/* Dashboard Controls - always visible */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '1rem',
-            gap: '1rem'
-          }}>
-            <h3 style={{ margin: 0 }}>
-              {activeDashboardId
-                ? `Dashboard: ${savedDashboards.find(d => d.id === activeDashboardId)?.name || 'Unknown'}`
-                : `Dashboard (${dashboardCharts.length} charts)`}
-            </h3>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                onClick={() => setShowLoadDashboardDialog(true)}
-                disabled={savedDashboards.length === 0}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: savedDashboards.length > 0 ? '#4CAF50' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: savedDashboards.length > 0 ? 'pointer' : 'not-allowed',
-                  fontSize: '0.875rem'
-                }}
-              >
-                Load Dashboard
-              </button>
-              <button
-                onClick={() => setShowSaveDashboardDialog(true)}
-                disabled={dashboardCharts.length === 0}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: dashboardCharts.length > 0 ? '#2196F3' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: dashboardCharts.length > 0 ? 'pointer' : 'not-allowed',
-                  fontSize: '0.875rem'
-                }}
-              >
-                Save Dashboard
-              </button>
-              <button
-                onClick={() => setShowManageDashboardsDialog(true)}
-                disabled={savedDashboards.length === 0}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: savedDashboards.length > 0 ? '#FF9800' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: savedDashboards.length > 0 ? 'pointer' : 'not-allowed',
-                  fontSize: '0.875rem'
-                }}
-              >
-                Manage
-              </button>
-              <button
-                onClick={() => {
-                  if (window.confirm('Clear all charts from dashboard?')) {
-                    setDashboardCharts([])
-                    setActiveDashboardId(null)
-                  }
-                }}
-                disabled={dashboardCharts.length === 0}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: dashboardCharts.length > 0 ? '#f44336' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: dashboardCharts.length > 0 ? 'pointer' : 'not-allowed',
-                  fontSize: '0.875rem'
-                }}
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-
-          {/* Dashboard Content */}
-          {dashboardCharts.length === 0 ? (
-            <div style={{
-              background: 'white',
-              padding: '3rem',
-              borderRadius: '8px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-              textAlign: 'center',
-              color: '#666'
-            }}>
-              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
-              <h3 style={{ margin: '0 0 0.5rem 0', color: '#333' }}>Your Dashboard is Empty</h3>
-              <p style={{ margin: 0 }}>
-                Click on the <strong>+ Add to Dashboard</strong> button on any chart in the table tabs to pin it here.
-                {savedDashboards.length > 0 && <><br />Or use the <strong>Load Dashboard</strong> button above to load a saved dashboard.</>}
-              </p>
-            </div>
-          ) : (
-            <div>
-
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, 175px)',
-                gridAutoRows: '175px',
-                gap: '0.5rem',
-                gridAutoFlow: 'dense'
-              }}>
-                {dashboardCharts.map((chart, chartIndex) => {
-                  const { tableName, columnName, countByTarget } = chart
-                  const overrideKey = countByTarget ? `parent:${countByTarget}` : ROW_COUNT_KEY
-                  const cardKey = getDashboardChartKey(chart)
-                  const cardRef = registerDashboardCard(cardKey)
-                  const aggregation = getAggregation(tableName, columnName, overrideKey)
-                  const tableColor = getTableColor(tableName)
-                  const displayTitle = getDisplayTitle(tableName, columnName)
-                  const indicatorNode = renderDashboardCountIndicator(chartIndex, tableName, columnName, overrideKey)
-                  const columnMeta = getColumnMetadata(tableName, columnName)
-                  const metaDisplayType = columnMeta?.display_type
-                  const normalizedDisplayType =
-                    aggregation?.normalized_display_type || aggregation?.display_type || metaDisplayType || ''
-
-                  if (!aggregation) {
-                    return (
-                      <div
-                        key={cardKey}
-                        ref={cardRef}
-                        data-dashboard-key={cardKey}
-                        style={{
-                          gridColumn: 'span 2',
-                          minHeight: '175px',
-                          background: 'white',
-                          borderRadius: '8px',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                          padding: '0.75rem',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          border: tableColor ? `2px solid ${tableColor}15` : undefined
-                        }}
-                      >
-                        {renderChartHeader({
-                          title: displayTitle,
-                          tooltip: `${displayTitle} is loading…`,
-                          countIndicator: indicatorNode
-                        })}
-                        <div style={{ fontSize: '0.8rem', color: '#999', textAlign: 'center' }}>
-                          Loading {displayTitle}…
-                        </div>
-                      </div>
-                    )
-                  }
-
-                  if ((normalizedDisplayType === 'categorical' || metaDisplayType === 'survival_status') && aggregation.categories) {
-                    const categoryCount = aggregation.categories.length
-                    const viewPref = getViewPreference(tableName, columnName, categoryCount)
-                    const allowPie = categoryCount <= MAX_PIE_CATEGORIES
-
-                    if (viewPref === 'table') {
-                      return (
-                        <div key={cardKey} ref={cardRef} data-dashboard-key={cardKey} style={{ gridColumn: 'span 2', gridRow: 'span 2' }}>
-                          <TableViewChart title={displayTitle} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={overrideKey} countIndicatorOverride={indicatorNode} />
-                        </div>
-                      )
-                    }
-
-                    if (allowPie) {
-                      return (
-                        <div key={cardKey} ref={cardRef} data-dashboard-key={cardKey}>
-                          <PieChart title={displayTitle} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={overrideKey} countIndicatorOverride={indicatorNode} />
-                        </div>
-                      )
-                    }
-
-                    return (
-                      <div key={cardKey} ref={cardRef} data-dashboard-key={cardKey} style={{ gridColumn: 'span 2' }}>
-                        <BarChart title={displayTitle} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={overrideKey} countIndicatorOverride={indicatorNode} />
-                      </div>
-                    )
-                  } else if (metaDisplayType === 'survival_time') {
-                    const view = getSurvivalViewPreference(tableName, columnName)
-                    const toggleButton = (
-                      <button
-                        type="button"
-                        onClick={event => {
-                          event.stopPropagation()
-                          toggleSurvivalViewPreference(tableName, columnName)
-                        }}
-                        style={{
-                          border: 'none',
-                          background: '#f0f0f0',
-                          color: '#333',
-                          borderRadius: '50%',
-                          width: '20px',
-                          height: '20px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '0.8rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          lineHeight: 1
-                        }}
-                        title={view === 'km' ? 'Show histogram' : 'Show survival curve'}
-                      >
-                        {view === 'km' ? '📊' : '┐'}
-                      </button>
-                    )
-
-                    if (view === 'km') {
-                      return (
-                        <div key={cardKey} ref={cardRef} data-dashboard-key={cardKey} style={{ gridColumn: 'span 2', gridRow: 'span 2' }}>
-                          <SurvivalChart title={displayTitle} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={overrideKey} countIndicatorOverride={indicatorNode} extraActions={toggleButton} showHistogram={false} />
-                        </div>
-                      )
-                    }
-
-                    return (
-                      <div key={cardKey} ref={cardRef} data-dashboard-key={cardKey} style={{ gridColumn: 'span 2' }}>
-                        <HistogramChart title={displayTitle} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={overrideKey} countIndicatorOverride={indicatorNode} extraActions={toggleButton} />
-                      </div>
-                    )
-                  } else if (normalizedDisplayType === 'numeric' && aggregation.histogram) {
-                    return (
-                      <div key={cardKey} ref={cardRef} data-dashboard-key={cardKey} style={{ gridColumn: 'span 2' }}>
-                        <HistogramChart title={displayTitle} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={overrideKey} countIndicatorOverride={indicatorNode} />
-                      </div>
-                    )
-                  } else if (aggregation.display_type === 'geographic' && aggregation.categories) {
-                    return (
-                      <div key={cardKey} ref={cardRef} data-dashboard-key={cardKey} style={{ gridColumn: 'span 4' }}>
-                        <MapChart title={displayTitle} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={overrideKey} countIndicatorOverride={indicatorNode} />
-                      </div>
-                    )
-                  }
-                  return null
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+        <DashboardView
+          dashboardCharts={dashboardCharts}
+          setDashboardCharts={setDashboardCharts}
+          savedDashboards={savedDashboards}
+          activeDashboardId={activeDashboardId}
+          setActiveDashboardId={setActiveDashboardId}
+          setShowLoadDashboardDialog={setShowLoadDashboardDialog}
+          setShowSaveDashboardDialog={setShowSaveDashboardDialog}
+          setShowManageDashboardsDialog={setShowManageDashboardsDialog}
+          getDashboardChartKey={getDashboardChartKey}
+          registerDashboardCard={registerDashboardCard}
+          getAggregation={getAggregation}
+          getTableColor={getTableColor}
+          getDisplayTitle={getDisplayTitle}
+          getColumnMetadata={getColumnMetadata}
+          getViewPreference={getViewPreference}
+          getSurvivalViewPreference={getSurvivalViewPreference}
+          toggleSurvivalViewPreference={toggleSurvivalViewPreference}
+          renderDashboardCountIndicator={renderDashboardCountIndicator}
+        />
       )}
 
       {/* Chart Grid - Grouped by Table */}
@@ -2259,7 +1849,6 @@ function DatasetExplorer() {
           const tableAggregations = getAggregationsForTable(table.name)
           if (!tableAggregations) return null
 
-          // Sort aggregations by display priority (if available from metadata)
           const sortedAggregations = [...tableAggregations].sort((a, b) => {
             const metaA = getColumnMetadata(table.name, a.column_name)
             const metaB = getColumnMetadata(table.name, b.column_name)
@@ -2295,273 +1884,38 @@ function DatasetExplorer() {
           const propagatedFilterCount = tableFilters.propagated.length
           const hasTableFilters = directFilterCount > 0 || propagatedFilterCount > 0
 
-          // Calculate maximum path length for transitive relationships (2+ hops only)
-          let maxPathLength = 0
-          if (propagatedFilterCount > 0 && dataset?.tables) {
-            for (const filter of tableFilters.propagated) {
-              if (filter.tableName) {
-                const path = findRelationshipPath(table.name, filter.tableName, dataset.tables)
-                if (path && path.length > 1) {
-                  const pathLength = path.length - 1 // Number of hops
-                  // Only track paths with 2+ hops (truly transitive)
-                  if (pathLength >= 2) {
-                    maxPathLength = Math.max(maxPathLength, pathLength)
-                  }
-                }
-              }
-            }
-          }
-
           const metricLabels = getMetricLabels(primaryAggregation)
           const parentOptions = ancestorOptions[table.name] || []
           const countByValue = getCountByValueForTable(table.name)
 
           return (
-            <div key={table.name} style={{ marginBottom: '2.5rem' }}>
-              {/* Table Section Header */}
-              <div style={{
-                background: `linear-gradient(135deg, ${tableColor}15, ${tableColor}05)`,
-                border: `2px solid ${tableColor}40`,
-                borderRadius: '8px',
-                padding: '0.75rem 1.25rem',
-                marginBottom: '1rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '1rem'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  {parentOptions.length > 0 ? renderTabCountIndicator(table.name, countByValue) : (
-                    <div style={{
-                      background: tableColor,
-                      color: 'white',
-                      width: '8px',
-                      height: '40px',
-                      borderRadius: '4px'
-                    }} />
-                  )}
-                  <div>
-                    <h3 style={{
-                      margin: 0,
-                      fontSize: '1.1rem',
-                      fontWeight: 600,
-                      color: '#333'
-                    }}>
-                      {table.displayName || table.name}
-                    </h3>
-                    <div
-                      data-testid={`row-count-${table.name}`}
-                      style={{
-                        fontSize: '0.8rem',
-                        color: '#666',
-                        marginTop: '0.2rem'
-                      }}>
-                      {hasTableFilters && baselineRowCount !== null ? (
-                        <>
-                          <span data-testid={`filtered-count-${table.name}`} style={{ color: '#E65100', fontWeight: 600 }}>
-                            {tableRowCount.toLocaleString()}
-                          </span>
-                          <span style={{ color: '#999' }}> / </span>
-                          <span data-testid={`total-count-${table.name}`}>{baselineRowCount.toLocaleString()}</span>
-                          <span style={{
-                            marginLeft: '0.3rem',
-                            padding: '0.1rem 0.4rem',
-                            background: '#FF9800',
-                            color: 'white',
-                            borderRadius: '8px',
-                            fontSize: '0.7rem',
-                            fontWeight: 600
-                          }}>
-                            {baselineRowCount > 0 ? ((tableRowCount / baselineRowCount) * 100).toFixed(1) : '0'}%
-                          </span>
-                          <span> {metricLabels.short} · {visibleAggregations.length} columns</span>
-                          <span style={{ color: '#999', fontSize: '0.75rem' }}> (by {getCountByLabelFromCacheKey(table.name, countByValue)})</span>
-                        </>
-                      ) : (
-                        <>
-                          <span data-testid={`total-count-${table.name}`}>{tableRowCount.toLocaleString()}</span> {metricLabels.short} · {visibleAggregations.length} columns
-                          <span style={{ color: '#999', fontSize: '0.75rem' }}> (by {getCountByLabelFromCacheKey(table.name, countByValue)})</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  {/* Filter badges */}
-                  {directFilterCount > 0 && (
-                    <div
-                      style={{
-                        background: '#1976D2',
-                        color: 'white',
-                        fontSize: '0.7rem',
-                        padding: '0.3rem 0.6rem',
-                        borderRadius: '4px',
-                        fontWeight: 600
-                      }}
-                      title={`${directFilterCount} direct filter${directFilterCount > 1 ? 's' : ''} applied`}
-                    >
-                      {directFilterCount} filter{directFilterCount > 1 ? 's' : ''}
-                    </div>
-                  )}
-                  {propagatedFilterCount > 0 && (
-                    <div
-                      style={{
-                        background: '#64B5F6',
-                        color: 'white',
-                        fontSize: '0.7rem',
-                        padding: '0.3rem 0.6rem',
-                        borderRadius: '4px',
-                        fontWeight: 600,
-                        fontStyle: 'italic'
-                      }}
-                      title={`${propagatedFilterCount} filter${propagatedFilterCount > 1 ? 's' : ''} propagated from related tables${maxPathLength > 0 ? ` (max ${maxPathLength} hop${maxPathLength > 1 ? 's' : ''})` : ''}`}
-                    >
-                      +{propagatedFilterCount} linked{maxPathLength > 0 ? ` (${maxPathLength}-hop)` : ''}
-                    </div>
-                  )}
-                  {/* Add All Charts button */}
-                  <button
-                    onClick={() => {
-                      addAllChartsToTable(table.name)
-                    }}
-                    style={{
-                      padding: '0.3rem 0.6rem',
-                      background: '#4CAF50',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      transition: 'background 0.2s'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#45a049'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#4CAF50'
-                    }}
-                    title="Add all charts from this table to dashboard"
-                  >
-                    + Add All
-                  </button>
-                  <div style={{
-                    background: tableColor,
-                    color: 'white',
-                    fontSize: '0.7rem',
-                    padding: '0.3rem 0.6rem',
-                    borderRadius: '4px',
-                    fontWeight: 600
-                  }}>
-                    {table.name}
-                  </div>
-                </div>
-              </div>
-
-              {/* Table Charts */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, 175px)',
-                gridAutoRows: '175px',
-                gap: '0.5rem',
-                gridAutoFlow: 'dense'
-              }}>
-                {visibleAggregations.map(agg => {
-                  const displayTitle = getDisplayTitle(table.name, agg.column_name)
-                  const cacheKey = getEffectiveCacheKeyForChart(table.name, agg.column_name)
-                  const defaultKey = getCountByCacheKey(table.name)
-                  const aggregationForChart = cacheKey === defaultKey ? agg : undefined
-                  const columnMeta = getColumnMetadata(table.name, agg.column_name)
-                  const metaDisplayType = columnMeta?.display_type
-                  const normalizedDisplayType =
-                    agg?.normalized_display_type || agg?.display_type || metaDisplayType || ''
-
-                  if ((normalizedDisplayType === 'categorical' || metaDisplayType === 'survival_status') && agg.categories) {
-                    const categoryCount = agg.categories.length
-                    const viewPref = getViewPreference(table.name, agg.column_name, categoryCount)
-                    const allowPie = categoryCount <= MAX_PIE_CATEGORIES
-
-                    if (viewPref === 'table') {
-                      return (
-                        <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 2', gridRow: 'span 2' }}>
-                          <TableViewChart title={displayTitle} tableName={table.name} field={agg.column_name} tableColor={tableColor} aggregationOverride={aggregationForChart} cacheKeyOverride={cacheKey} />
-                        </div>
-                      )
-                    }
-
-                    if (allowPie) {
-                      return (
-                        <div key={`${table.name}_${agg.column_name}`}>
-                          <PieChart title={displayTitle} tableName={table.name} field={agg.column_name} tableColor={tableColor} aggregationOverride={aggregationForChart} cacheKeyOverride={cacheKey} />
-                        </div>
-                      )
-                    }
-
-                    return (
-                      <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 2' }}>
-                        <BarChart title={displayTitle} tableName={table.name} field={agg.column_name} tableColor={tableColor} aggregationOverride={aggregationForChart} cacheKeyOverride={cacheKey} />
-                      </div>
-                    )
-                  } else if (metaDisplayType === 'survival_time') {
-                    const view = getSurvivalViewPreference(table.name, agg.column_name)
-                    const toggleButton = (
-                      <button
-                        type="button"
-                        onClick={event => {
-                          event.stopPropagation()
-                          toggleSurvivalViewPreference(table.name, agg.column_name)
-                        }}
-                        style={{
-                          border: 'none',
-                          background: '#f0f0f0',
-                          color: '#333',
-                          borderRadius: '50%',
-                          width: '20px',
-                          height: '20px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '0.8rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          lineHeight: 1
-                        }}
-                        title={view === 'km' ? 'Show histogram' : 'Show survival curve'}
-                      >
-                        {view === 'km' ? '📊' : '┐'}
-                      </button>
-                    )
-
-                    if (view === 'km') {
-                      return (
-                        <div key={`${table.name}_${agg.column_name}_km`} style={{ gridColumn: 'span 2', gridRow: 'span 2' }}>
-                          <SurvivalChart title={displayTitle} tableName={table.name} field={agg.column_name} tableColor={tableColor} aggregationOverride={aggregationForChart} cacheKeyOverride={cacheKey} extraActions={toggleButton} showHistogram={false} />
-                        </div>
-                      )
-                    }
-
-                    return (
-                      <div key={`${table.name}_${agg.column_name}_hist`} style={{ gridColumn: 'span 2' }}>
-                        <HistogramChart title={displayTitle} tableName={table.name} field={agg.column_name} tableColor={tableColor} aggregationOverride={aggregationForChart} cacheKeyOverride={cacheKey} extraActions={toggleButton} />
-                      </div>
-                    )
-                  } else if (normalizedDisplayType === 'numeric' && agg.histogram) {
-                    return (
-                      <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 2' }}>
-                        <HistogramChart title={displayTitle} tableName={table.name} field={agg.column_name} tableColor={tableColor} aggregationOverride={aggregationForChart} cacheKeyOverride={cacheKey} />
-                      </div>
-                    )
-                  } else if (agg.display_type === 'geographic' && agg.categories) {
-                    return (
-                      <div key={`${table.name}_${agg.column_name}`} style={{ gridColumn: 'span 4' }}>
-                        <MapChart title={displayTitle} tableName={table.name} field={agg.column_name} tableColor={tableColor} aggregationOverride={aggregationForChart} cacheKeyOverride={cacheKey} />
-                      </div>
-                    )
-                  }
-                  return null
-                })}
-              </div>
-            </div>
+            <TableSection
+              key={table.name}
+              table={table}
+              tables={dataset.tables}
+              tableColor={tableColor}
+              visibleAggregations={visibleAggregations}
+              primaryAggregation={primaryAggregation}
+              baselineRowCount={baselineRowCount}
+              hasTableFilters={hasTableFilters}
+              directFilterCount={directFilterCount}
+              propagatedFilterCount={propagatedFilterCount}
+              propagatedFilters={tableFilters.propagated}
+              metricLabels={metricLabels}
+              countByValue={countByValue}
+              parentOptions={parentOptions}
+              getTableColor={getTableColor}
+              getDisplayTitle={getDisplayTitle}
+              getColumnMetadata={getColumnMetadata}
+              getEffectiveCacheKeyForChart={getEffectiveCacheKeyForChart}
+              getCountByCacheKey={getCountByCacheKey}
+              getCountByLabelFromCacheKey={getCountByLabelFromCacheKey}
+              getViewPreference={getViewPreference}
+              getSurvivalViewPreference={getSurvivalViewPreference}
+              toggleSurvivalViewPreference={toggleSurvivalViewPreference}
+              addAllChartsToTable={addAllChartsToTable}
+              renderTabCountIndicator={renderTabCountIndicator}
+            />
           )
         })}
     </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import api from '../../../services/api'
 import type { SavedDashboard } from '../types'
 
-type DashboardChart = {
+export type DashboardChart = {
   tableName: string
   columnName: string
   countByTarget: string | null
