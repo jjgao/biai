@@ -101,7 +101,7 @@ npm run build
 ### React Components
 - Functional components with hooks
 - State managed via useState/useEffect
-- Large files need refactoring (DatasetExplorer.tsx is too big)
+- DatasetExplorer decomposed into hooks + components (see architecture below)
 
 ### API Routes
 - RESTful patterns: `/api/datasets`, `/api/datasets/:id/tables`
@@ -124,6 +124,38 @@ npm run build
   - Requires ClickHouse running (`docker-compose up -d clickhouse`)
   - Test data: uses `example_data/` files
   - Fixtures in `tests/e2e/fixtures.ts` provide API helpers for fast dataset setup/teardown
+
+## DatasetExplorer Architecture
+
+The main exploration page (`client/src/pages/DatasetExplorer/`) is decomposed into:
+
+```
+DatasetExplorer/
+├── DatasetExplorer.tsx     # Orchestrator (~620 lines): hook calls, bridge functions, JSX
+├── types.ts                # Shared types, constants, persistence helpers
+├── utils.ts                # Pure utility functions (histogram binning, serialization, etc.)
+├── hooks/
+│   ├── useFilterState.ts   # Filter state: toggleFilter, ranges, URL restore
+│   ├── useCountBy.ts       # Count-by selections, chart overrides, persistence
+│   ├── useDatasetLoader.ts # Data loading, caching, aggregations, survival curves
+│   ├── useFilterPresets.ts # Saved filter presets (localStorage)
+│   ├── useViewPreferences.ts # Chart display preferences
+│   └── useDashboard.ts     # Dashboard chart management
+└── components/
+    ├── ChartContext.tsx     # React context (~30 props shared with all chart components)
+    ├── DatasetHeader.tsx    # Page header
+    ├── TabBar.tsx           # Table tab navigation
+    ├── DashboardView.tsx    # Dashboard grid layout
+    ├── TableSection.tsx     # Per-table chart grid
+    ├── CountIndicator.tsx   # Count-by indicator button + dropdown
+    ├── ActiveFilters.tsx    # Active filter chips bar
+    ├── FilterChip.tsx       # Individual filter chip
+    ├── renderChartByType.tsx# Chart type dispatcher
+    ├── PieChart.tsx, BarChart.tsx, HistogramChart.tsx, etc.
+    └── ...
+```
+
+**Hook dependency flow:** `useCountBy` → `useDatasetLoader` → `useFilterState` (called in order; DatasetExplorer bridges cross-hook dependencies via callbacks).
 
 ## Common Patterns
 
@@ -173,14 +205,14 @@ export const fetchSomething = async (id: string) => {
 | `server/src/services/dashboardService.ts` | Dashboard persistence | Save/load/delete dashboards |
 | `server/src/services/spreadsheetParser.ts` | Excel/ODS import | Multi-sheet support |
 | `server/src/utils/sqlSanitizer.ts` | SQL injection prevention | Column/table name validation |
-| `client/src/pages/DatasetExplorer.tsx` | Main exploration UI | 6K+ lines, needs refactoring (#92) |
+| `client/src/pages/DatasetExplorer/DatasetExplorer.tsx` | Main exploration UI | ~620 lines, orchestrates hooks + components |
 | `client/src/pages/DatasetManage.tsx` | Upload/config UI | Dataset and table management |
 | `client/src/utils/filterHelpers.ts` | Filter logic | Relationship pathfinding, propagation |
 | `clickhouse/init/01-init.sql` | Database schema | 4 metadata tables |
 
 ## Known Issues & Technical Debt
 
-1. **Large Component** (#92) - `DatasetExplorer.tsx` is 6K+ lines; refactoring planned (#119-#123)
+1. ~~**Large Component** (#92) - `DatasetExplorer.tsx` was 6K+ lines~~ (resolved: refactored to ~620 lines via #119-#123)
 2. **Type Duplication** (#94) - Same types defined in client and server
 3. ~~**Missing E2E Tests** (#95) - No end-to-end tests for critical workflows~~ (resolved: Playwright e2e tests added)
 4. **No OpenAPI Docs** (#93) - API endpoints lack formal specification
