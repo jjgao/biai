@@ -6,7 +6,8 @@ import type {
   SpreadsheetPreview,
   SheetImportConfig,
   PreviewData,
-  PotentialTarget
+  PotentialTarget,
+  DetectedRelationship
 } from '../types'
 
 interface UseTableImportOptions {
@@ -33,7 +34,7 @@ export function useTableImport({ datasetId, dataset, onImportSuccess }: UseTable
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [selectedPrimaryKey, setSelectedPrimaryKey] = useState('')
-  const [confirmedRelationships, setConfirmedRelationships] = useState<any[]>([])
+  const [confirmedRelationships, setConfirmedRelationships] = useState<DetectedRelationship[]>([])
   const [selectedListColumns, setSelectedListColumns] = useState<Map<string, 'python' | 'json'>>(new Map())
 
   // Import configuration
@@ -286,10 +287,10 @@ export function useTableImport({ datasetId, dataset, onImportSuccess }: UseTable
     if (finalPrimaryKey) formData.append('primaryKey', finalPrimaryKey)
 
     if (confirmedRelationships.length > 0) {
-      const relationships = confirmedRelationships.map((rel: any) => ({
+      const relationships = confirmedRelationships.map((rel: DetectedRelationship) => ({
         foreignKey: rel.foreignKey,
         referenced_table: rel.referencedTable,
-        referenced_column: rel.referenced_column
+        referenced_column: rel.referenced_column || rel.referencedColumn
       }))
       formData.append('relationships', JSON.stringify(relationships))
     }
