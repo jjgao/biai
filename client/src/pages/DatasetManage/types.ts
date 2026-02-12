@@ -1,3 +1,8 @@
+import type { DetectedRelationship } from 'shared'
+
+// Re-export from shared so existing imports continue to work
+export type { DetectedRelationship } from 'shared'
+
 export interface Column {
   name: string
   type: string
@@ -87,16 +92,6 @@ export interface PreviewData {
   detectedDelimiter?: string
   detectedSkipRows?: number
   listSuggestions?: ListSuggestion[]
-}
-
-export interface DetectedRelationship {
-  foreignKey: string
-  referencedTable: string
-  referencedColumn: string
-  referenced_column?: string
-  referencedTableId?: string
-  matchPercentage?: number
-  sampleMatches?: any[]
 }
 
 export interface ListSuggestion {

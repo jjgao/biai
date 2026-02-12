@@ -4,12 +4,9 @@ import { ColumnMetadata, ParsedData } from './fileParser.js'
 import { analyzeColumn } from './columnAnalyzer.js'
 import { escapeIdentifier } from '../utils/sqlSanitizer.js'
 
-export interface TableRelationship {
-  foreign_key: string
-  referenced_table: string
-  referenced_column: string
-  type?: string
-}
+// Re-export from shared so existing imports continue to work
+export type { TableRelationship } from 'shared'
+import type { TableRelationship } from 'shared'
 
 export interface DatasetTable {
   table_id: string

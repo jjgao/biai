@@ -1,0 +1,10 @@
+/**
+ * Dashboard types shared between client and server.
+ */
+
+export interface DashboardChart {
+  tableName: string
+  columnName: string
+  countByTarget: string | null
+  addedAt: string
+}

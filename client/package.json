@@ -11,6 +11,7 @@
     "test:ui": "vitest --ui"
   },
   "dependencies": {
+    "shared": "*",
     "axios": "^1.7.7",
     "dompurify": "^3.2.7",
     "plotly.js": "^3.1.1",

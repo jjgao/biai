@@ -1,74 +1,35 @@
 import clickhouseClient from '../config/clickhouse.js'
 import { escapeIdentifier } from '../utils/sqlSanitizer.js'
 
+// Re-export shared types so existing imports from this module continue to work.
+// Canonical definitions live in the `shared` package.
+export type {
+  CategoryCount,
+  NumericStats,
+  HistogramBin,
+  ColumnAggregation,
+  Filter,
+  TableRelationship,
+  MetricType,
+  CountByConfig,
+  MetricPathSegment,
+  SurvivalCurvePoint,
+} from 'shared'
+
+import type {
+  CategoryCount,
+  NumericStats,
+  HistogramBin,
+  ColumnAggregation,
+  Filter,
+  TableRelationship,
+  MetricType,
+  CountByConfig,
+  MetricPathSegment,
+  SurvivalCurvePoint,
+} from 'shared'
+
 const BASE_TABLE_ALIAS = 'base_table'
-
-export interface CategoryCount {
-  value: string
-  display_value: string
-  count: number
-  percentage: number
-}
-
-export interface NumericStats {
-  min: number
-  max: number
-  mean: number
-  median: number
-  stddev: number
-  q25: number
-  q75: number
-}
-
-export interface HistogramBin {
-  bin_start: number
-  bin_end: number
-  count: number
-  percentage: number
-}
-
-export interface ColumnAggregation {
-  column_name: string
-  display_type: string
-  normalized_display_type?: string
-  total_rows: number
-  null_count: number
-  unique_count: number
-
-  // For categorical columns
-  categories?: CategoryCount[]
-
-  // For numeric columns
-  numeric_stats?: NumericStats
-  histogram?: HistogramBin[]
-
-  metric_type?: MetricType
-  metric_parent_table?: string
-  metric_parent_column?: string
-  metric_path?: MetricPathSegment[]
-}
-
-export interface Filter {
-  // Simple filter (leaf node)
-  column?: string
-  operator?: 'eq' | 'in' | 'gt' | 'lt' | 'gte' | 'lte' | 'between'
-  value?: any
-
-  // Logical operators (internal nodes)
-  and?: Filter[]
-  or?: Filter[]
-  not?: Filter
-
-  // Cross-table metadata (optional)
-  tableName?: string
-}
-
-export interface TableRelationship {
-  foreign_key: string
-  referenced_table: string
-  referenced_column: string
-  type?: string
-}
 
 export interface TableMetadata {
   table_name: string
@@ -76,29 +37,10 @@ export interface TableMetadata {
   relationships?: TableRelationship[]
 }
 
-export type MetricType = 'rows' | 'parent'
-
-/**
- * Configuration describing how a table should aggregate counts.
- * - `rows` (default) counts raw rows
- * - `parent` counts distinct values from an upstream table
- */
-export interface CountByConfig {
-  mode: MetricType
-  target_table?: string
-}
-
 interface MetricJoin {
   alias: string
   table: string
   on: string
-}
-
-export interface MetricPathSegment {
-  from_table: string
-  via_column: string
-  to_table: string
-  referenced_column?: string
 }
 
 interface MetricContext {
@@ -110,14 +52,6 @@ interface MetricContext {
   pathSegments?: MetricPathSegment[]
   aliasByTable?: Record<string, string>
   parentAlias?: string
-}
-
-export interface SurvivalCurvePoint {
-  time: number
-  atRisk: number
-  events: number
-  censored: number
-  survival: number
 }
 
 const badRequest = (message: string): Error => {

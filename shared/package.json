@@ -1,0 +1,22 @@
+{
+  "name": "shared",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared TypeScript types for BIAI client and server",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.3"
+  }
+}

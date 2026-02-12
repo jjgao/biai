@@ -1,6 +1,2 @@
-export type MetricPathSegment = {
-  from_table: string
-  via_column: string
-  to_table: string
-  referenced_column?: string
-}
+// Re-export from shared so existing imports continue to work
+export type { MetricPathSegment } from 'shared'

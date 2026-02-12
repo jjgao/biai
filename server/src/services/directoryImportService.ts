@@ -2,7 +2,7 @@ import { readdir, readFile, stat } from 'fs/promises'
 import path from 'path'
 import { parseDatasetMetadata, parseTableMetadata, TableRelationship } from './metadataParser.js'
 import { parseCSVFile, ColumnMetadataConfig } from './fileParser.js'
-import datasetService, { TableRelationship as DatasetTableRelationship } from './datasetService.js'
+import datasetService, { type TableRelationship as SharedTableRelationship } from './datasetService.js'
 
 export interface DirectoryImportResult {
   datasetId: string
@@ -42,7 +42,7 @@ const CORE_DATASET_FIELDS = new Set([
  * metadataParser: { foreign_key: "patient_id", references: "patients(patient_id)", type: "many-to-one" }
  * datasetService: { foreign_key: "patient_id", referenced_table: "patients", referenced_column: "patient_id", type: "many-to-one" }
  */
-function convertRelationship(rel: TableRelationship): DatasetTableRelationship {
+function convertRelationship(rel: TableRelationship): SharedTableRelationship {
   const match = rel.references.match(/^([a-zA-Z0-9_]+)\(([^)]+)\)$/)
   // Normalize referenced_table the same way datasetService normalizes table names
   const rawTable = match ? match[1] : rel.references
