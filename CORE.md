@@ -17,6 +17,13 @@ This file contains the shared project rules and reference material for all agent
 
 ```
 biai/
+├── shared/                  # Shared TypeScript types (workspace package)
+│   └── src/
+│       ├── index.ts        # Barrel re-exports
+│       ├── filters.ts      # Filter, TableRelationship
+│       ├── aggregation.ts  # ColumnAggregation, SurvivalCurvePoint, etc.
+│       ├── dashboard.ts    # DashboardChart
+│       └── import.ts       # DetectedRelationship
 ├── client/                  # React frontend
 │   └── src/
 │       ├── pages/          # Main views (DatasetExplorer, DatasetManage, etc.)
@@ -213,7 +220,7 @@ export const fetchSomething = async (id: string) => {
 ## Known Issues & Technical Debt
 
 1. ~~**Large Component** (#92) - `DatasetExplorer.tsx` was 6K+ lines~~ (resolved: refactored to ~620 lines via #119-#123)
-2. **Type Duplication** (#94) - Same types defined in client and server
+2. ~~**Type Duplication** (#94) - Same types defined in client and server~~ (resolved: shared types package extracted via #168)
 3. ~~**Missing E2E Tests** (#95) - No end-to-end tests for critical workflows~~ (resolved: Playwright e2e tests added)
 4. **No OpenAPI Docs** (#93) - API endpoints lack formal specification
 

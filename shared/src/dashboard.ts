@@ -5,6 +5,6 @@
 export interface DashboardChart {
   tableName: string
   columnName: string
-  countByTarget: string | null
+  countByTarget?: string | null
   addedAt: string
 }

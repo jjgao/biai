@@ -44,7 +44,7 @@ export function useDashboard({ identifier }: UseDashboardArgs) {
     }))
   }
 
-  const getDashboardChartKey = (chart: { tableName: string; columnName: string; countByTarget: string | null }) =>
+  const getDashboardChartKey = (chart: Pick<DashboardChart, 'tableName' | 'columnName' | 'countByTarget'>) =>
     `${chart.tableName}:${chart.columnName}:${chart.countByTarget ?? 'rows'}`
 
   const registerDashboardCard = useCallback(
