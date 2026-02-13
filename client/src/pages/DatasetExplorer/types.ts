@@ -1,4 +1,20 @@
-import type { MetricPathSegment } from '../../types'
+import type {
+  SurvivalCurvePoint,
+  ColumnAggregation,
+  TableRelationship,
+  MetricPathSegment,
+} from 'shared'
+
+// Re-export shared types so existing imports from this module continue to work
+export type {
+  CategoryCount,
+  NumericStats,
+  HistogramBin,
+  SurvivalCurvePoint,
+  ColumnAggregation,
+  TableRelationship,
+  MetricPathSegment,
+} from 'shared'
 
 // Small categorical sets render better as pie charts; beyond this use bars.
 export const MAX_PIE_CATEGORIES = 8
@@ -67,53 +83,7 @@ export interface ColumnMetadata {
   list_syntax?: string
 }
 
-export interface CategoryCount {
-  value: string
-  display_value: string
-  count: number
-  percentage: number
-}
 
-export interface NumericStats {
-  min: number
-  max: number
-  mean: number
-  median: number
-  stddev: number
-  q25: number
-  q75: number
-}
-
-export interface HistogramBin {
-  bin_start: number
-  bin_end: number
-  count: number
-  percentage: number
-}
-
-export interface SurvivalCurvePoint {
-  time: number
-  atRisk: number
-  events: number
-  censored: number
-  survival: number
-}
-
-export interface ColumnAggregation {
-  column_name: string
-  display_type: string
-  normalized_display_type?: string
-  total_rows: number
-  null_count: number
-  unique_count: number
-  categories?: CategoryCount[]
-  numeric_stats?: NumericStats
-  histogram?: HistogramBin[]
-  metric_type?: 'rows' | 'parent'
-  metric_parent_table?: string
-  metric_parent_column?: string
-  metric_path?: MetricPathSegment[]
-}
 
 export interface SavedDashboard {
   id: string
@@ -121,13 +91,6 @@ export interface SavedDashboard {
   charts: Array<{ tableName: string; columnName: string; addedAt: string }>
   createdAt: string
   updatedAt: string
-}
-
-export interface TableRelationship {
-  foreign_key: string
-  referenced_table: string
-  referenced_column: string
-  type?: string
 }
 
 export interface Table {

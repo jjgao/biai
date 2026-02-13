@@ -1,11 +1,8 @@
 import clickhouseClient from '../config/clickhouse.js'
 
-export interface DashboardChart {
-  tableName: string
-  columnName: string
-  countByTarget?: string | null
-  addedAt: string
-}
+// Re-export from shared so existing imports continue to work
+export type { DashboardChart } from 'shared'
+import type { DashboardChart } from 'shared'
 
 export interface Dashboard {
   dashboard_id: string

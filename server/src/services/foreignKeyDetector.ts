@@ -1,14 +1,9 @@
 import { ParsedData } from './fileParser.js'
 import { DatasetTable } from './datasetService.js'
 
-export interface DetectedRelationship {
-  foreignKey: string // column in new table
-  referencedTable: string // table name
-  referencedTableId: string // table id
-  referencedColumn: string // column in referenced table
-  matchPercentage: number // percentage of values that match
-  sampleMatches: string[] // sample matching values
-}
+// Re-export from shared so existing imports continue to work
+export type { DetectedRelationship } from 'shared'
+import type { DetectedRelationship } from 'shared'
 
 /**
  * Detects potential foreign key relationships between a new table and existing tables

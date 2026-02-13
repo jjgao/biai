@@ -2,20 +2,9 @@
  * Filter helper utilities for cross-table filtering
  */
 
-export interface Filter {
-  column?: string
-  operator?: 'eq' | 'in' | 'gt' | 'lt' | 'gte' | 'lte' | 'between'
-  value?: any
-  and?: Filter[]
-  or?: Filter[]
-  not?: Filter
-  tableName?: string
-  /**
-   * Client-side metadata describing which count context (rows vs parent table) produced the filter.
-   * The backend ignores this field and only relies on {@link tableName} to derive join paths.
-   */
-  countByKey?: string
-}
+// Re-export from shared so existing imports continue to work
+export type { Filter, TableRelationship } from 'shared'
+import type { Filter, TableRelationship } from 'shared'
 
 export const ROW_COUNT_KEY = 'rows'
 
@@ -25,13 +14,6 @@ export const ROW_COUNT_KEY = 'rows'
 export const unwrapNot = (filter?: Filter | null): Filter | undefined => {
   if (!filter) return undefined
   return filter.not ?? filter
-}
-
-export interface TableRelationship {
-  foreign_key: string
-  referenced_table: string
-  referenced_column: string
-  type?: string
 }
 
 export interface Table {

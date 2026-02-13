@@ -2,12 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import api from '../../../services/api'
 import type { SavedDashboard } from '../types'
 
-export type DashboardChart = {
-  tableName: string
-  columnName: string
-  countByTarget: string | null
-  addedAt: string
-}
+// Re-export from shared so existing imports continue to work
+export type { DashboardChart } from 'shared'
+import type { DashboardChart } from 'shared'
 
 interface UseDashboardArgs {
   identifier: string | undefined
@@ -47,7 +44,7 @@ export function useDashboard({ identifier }: UseDashboardArgs) {
     }))
   }
 
-  const getDashboardChartKey = (chart: { tableName: string; columnName: string; countByTarget: string | null }) =>
+  const getDashboardChartKey = (chart: Pick<DashboardChart, 'tableName' | 'columnName' | 'countByTarget'>) =>
     `${chart.tableName}:${chart.columnName}:${chart.countByTarget ?? 'rows'}`
 
   const registerDashboardCard = useCallback(
