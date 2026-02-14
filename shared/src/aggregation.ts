@@ -49,6 +49,7 @@ export interface ColumnAggregation {
   metric_parent_table?: string
   metric_parent_column?: string
   metric_path?: MetricPathSegment[]
+  sql?: string
 }
 
 export interface SurvivalCurvePoint {
