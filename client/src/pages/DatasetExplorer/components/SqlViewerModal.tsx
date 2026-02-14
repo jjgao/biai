@@ -96,7 +96,7 @@ export function SqlViewerModal({ sql, columnName, onClose }: SqlViewerModalProps
               overflowX: 'auto',
               margin: 0,
               whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all'
+              overflowWrap: 'break-word'
             }}
           >
             {sql}
@@ -147,20 +147,22 @@ export function SqlViewButton({ sql, columnName }: SqlViewButtonProps) {
   return (
     <>
       <button
-        onClick={() => setShowModal(true)}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setShowModal(true) }}
         style={{
           width: '20px',
           height: '20px',
           borderRadius: '50%',
           backgroundColor: '#f0f0f0',
-          border: '1px solid #d0d0d0',
+          border: 'none',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: '12px',
+          fontSize: '0.65rem',
           fontWeight: 'bold',
-          color: '#666'
+          color: '#666',
+          lineHeight: 1
         }}
         title="View SQL query"
       >
