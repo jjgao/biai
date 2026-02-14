@@ -40,11 +40,12 @@ describe('AggregationService helpers', () => {
     )
 
     expect(mockQuery).toHaveBeenCalledTimes(1)
-    expect(result).toEqual([
+    expect(result.data).toEqual([
       { value: '', display_value: '(Empty)', count: 10, percentage: 50 },
       { value: 'N/A', display_value: '(N/A)', count: 5, percentage: 25 },
       { value: 'yes', display_value: 'yes', count: 5, percentage: 25 }
     ])
+    expect(result.sql).toBeDefined()
   })
 
   test('buildFilterCondition handles empty, N/A, numeric values in IN filter', () => {
