@@ -6,6 +6,7 @@ import { useChartContext } from './ChartContext'
 import { ChartHeader } from './ChartHeader'
 import { CountIndicator } from './CountIndicator'
 import { NumericFilterMenu } from './NumericFilterMenu'
+import { SqlViewButton } from './SqlViewerModal'
 
 interface SurvivalChartProps extends BaseChartProps {
   extraActions?: React.ReactNode
@@ -58,6 +59,7 @@ export function SurvivalChart({
 
   const actionButtons = (
     <>
+      <SqlViewButton sql={aggregation?.sql} columnName={field} />
       <button
         type="button"
         onClick={event => {

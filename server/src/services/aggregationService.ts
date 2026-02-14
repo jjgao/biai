@@ -848,7 +848,7 @@ class AggregationService {
     if (effectiveDisplayType === 'categorical' || effectiveDisplayType === 'id' || effectiveDisplayType === 'geographic') {
       // Use higher limit for geographic columns (to include all US states/territories)
       const categoryLimit = effectiveDisplayType === 'geographic' ? 100 : 50
-      aggregation.categories = await this.getCategoricalAggregation(
+      const catResult = await this.getCategoricalAggregation(
         qualifiedTableName,
         columnName,
         filteredTotalRows,
@@ -857,6 +857,8 @@ class AggregationService {
         metricContext,
         isListColumn
       )
+      aggregation.categories = catResult.data
+      aggregation.sql = catResult.sql
     } else if (effectiveDisplayType === 'numeric') {
       aggregation.numeric_stats = await this.getNumericStats(
         qualifiedTableName,
@@ -864,7 +866,7 @@ class AggregationService {
         whereClause,
         metricContext
       )
-      aggregation.histogram = await this.getHistogram(
+      const histResult = await this.getHistogram(
         qualifiedTableName,
         columnName,
         20,
@@ -872,6 +874,8 @@ class AggregationService {
         metricContext,
         filteredTotalRows
       )
+      aggregation.histogram = histResult.data
+      aggregation.sql = histResult.sql
     }
 
     return aggregation
@@ -888,7 +892,7 @@ class AggregationService {
     whereClause: string = '',
     metricContext: MetricContext,
     isListColumn: boolean = false
-  ): Promise<CategoryCount[]> {
+  ): Promise<{ data: CategoryCount[]; sql: string }> {
     const metricAggregation = this.getMetricAggregationExpression(metricContext)
     const columnExpr = this.columnRef(columnName)
     const fromClause = this.buildFromClause(qualifiedTableName, metricContext)
@@ -950,7 +954,8 @@ class AggregationService {
       format: 'JSONEachRow'
     })
 
-    return await result.json<CategoryCount>()
+    const data = await result.json<CategoryCount>()
+    return { data, sql: query }
   }
 
   /**
@@ -997,7 +1002,7 @@ class AggregationService {
     whereClause: string = '',
     metricContext: MetricContext,
     totalMetricCount: number
-  ): Promise<HistogramBin[]> {
+  ): Promise<{ data: HistogramBin[]; sql: string }> {
     // First get min and max to calculate bin width
     const columnExpr = this.columnRef(columnName)
     const fromClause = this.buildFromClause(qualifiedTableName, metricContext)
@@ -1017,22 +1022,25 @@ class AggregationService {
 
     const minMaxData = await minMaxResult.json<{ min_val: number | null; max_val: number | null }>()
     if (minMaxData.length === 0) {
-      return []
+      return { data: [], sql: minMaxQuery }
     }
 
     const { min_val, max_val } = minMaxData[0]
     if (min_val === null || max_val === null) {
-      return []
+      return { data: [], sql: minMaxQuery }
     }
 
     if (min_val === max_val) {
       // All values are the same
-      return [{
-        bin_start: min_val,
-        bin_end: min_val,
-        count: totalMetricCount,
-        percentage: 100
-      }]
+      return {
+        data: [{
+          bin_start: min_val,
+          bin_end: min_val,
+          count: totalMetricCount,
+          percentage: 100
+        }],
+        sql: minMaxQuery
+      }
     }
 
     const binWidth = (max_val - min_val) / bins
@@ -1058,12 +1066,13 @@ class AggregationService {
     })
 
     const histogram = await result.json<{ bin_start: number; bin_end: number; count: number }>()
-    return histogram.map(bin => ({
+    const data = histogram.map(bin => ({
       bin_start: bin.bin_start,
       bin_end: bin.bin_end,
       count: bin.count,
       percentage: totalMetricCount > 0 ? (bin.count / totalMetricCount) * 100 : 0
     }))
+    return { data, sql: histogramQuery }
   }
 
   private qualifyTableName(tableName: string): string {

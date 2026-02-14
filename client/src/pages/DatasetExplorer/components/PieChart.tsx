@@ -7,6 +7,7 @@ import { useChartContext } from './ChartContext'
 import { ChartHeader } from './ChartHeader'
 import { CountIndicator } from './CountIndicator'
 import { FilterMenu } from './FilterMenu'
+import { SqlViewButton } from './SqlViewerModal'
 
 export function PieChart({
   title,
@@ -45,6 +46,7 @@ export function PieChart({
   const columnActive = ctx.hasColumnFilter(field, cacheKey)
   const actionButtons = (
     <>
+      <SqlViewButton sql={aggregation?.sql} columnName={field} />
       <button
         type="button"
         onClick={event => {
