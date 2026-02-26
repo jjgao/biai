@@ -391,22 +391,58 @@ class AggregationService {
     const positiveFilter = (filter as any).not
     if (!positiveFilter) return null
 
-    // Build the positive condition
-    const condition = this.buildFilterCondition(positiveFilter, BASE_TABLE_ALIAS)
+    const pathSegments = metricContext.pathSegments
+    if (!pathSegments || pathSegments.length === 0) return null
+
+    // Build the positive condition WITHOUT an alias.
+    // Passing BASE_TABLE_ALIAS would produce a correlated subquery that ClickHouse
+    // rejects (error code 48, NOT_IMPLEMENTED). Using null means the WHERE clause
+    // references the child-table columns directly, keeping the subquery self-contained.
+    const condition = this.buildFilterCondition(positiveFilter, null)
     if (!condition) return null
 
-    // Get the parent foreign key column from path segments
-    // pathSegments[0].via_column has the foreign key from child to parent
-    const parentFk = metricContext.pathSegments?.[0]?.via_column
-    if (!parentFk) return null
+    const numHops = pathSegments.length
+    // The "last FK" is the foreign-key column in the second-to-last table that points at
+    // the ultimate ancestor.  For a 1-hop path it's still pathSegments[0].via_column
+    // (i.e. the FK in the base table itself).
+    const lastFk = pathSegments[numHops - 1].via_column
+    const escFk = escapeIdentifier(lastFk)
+    const qualifiedBaseTable = this.qualifyTableName(currentTableClickhouseName)
 
-    const qualifiedTableName = this.qualifyTableName(currentTableClickhouseName)
-    const columnRef = this.columnRef(parentFk, BASE_TABLE_ALIAS)
+    if (numHops === 1) {
+      // ── Single-hop ─────────────────────────────────────────────────────────
+      // The FK column lives in the base table, so no extra join is needed.
+      // Example (samples → patients):
+      //   base_table.`patient_id` NOT IN (SELECT `patient_id` FROM biai.samples_raw WHERE ...)
+      const outerRef = `${BASE_TABLE_ALIAS}.${escFk}`
+      return `${outerRef} NOT IN (SELECT ${escFk} FROM ${qualifiedBaseTable} WHERE ${condition})`
+    }
 
-    // Build exclusion subquery
-    // Example: parent_id NOT IN (SELECT parent_id FROM samples WHERE sample_type = 'Primary')
-    // Escape parentFk as defense-in-depth (comes from relationship metadata)
-    return `${columnRef} NOT IN (SELECT ${escapeIdentifier(parentFk)} FROM ${qualifiedTableName} WHERE ${condition})`
+    // ── Multi-hop ─────────────────────────────────────────────────────────────
+    // The last FK lives in the (numHops-1)th join alias (ancestor_{numHops-2}).
+    // We rebuild the inner subquery by joining through all segments except the last,
+    // using the same alias names as the outer query (subquery scope is independent).
+    //
+    // Example – 2 hops (mutations → samples → patients):
+    //   ancestor_0.`patient_id` NOT IN (
+    //     SELECT ancestor_0.`patient_id`
+    //     FROM biai.mutations_raw base_table
+    //     ANY LEFT JOIN biai.samples_raw AS ancestor_0 ON base_table.`sample_id` = ancestor_0.`sample_id`
+    //     WHERE <condition on mutations columns>
+    //   )
+    const joins = metricContext.joins
+    if (!joins || joins.length < numHops - 1) return null
+
+    // The join that holds lastFk is the (numHops-2)th join (0-indexed).
+    const fkHolderAlias = joins[numHops - 2].alias
+    const innerJoins = joins
+      .slice(0, numHops - 1)
+      .map(j => `ANY LEFT JOIN ${j.table} AS ${j.alias} ON ${j.on}`)
+      .join(' ')
+
+    const selectedRef = `${fkHolderAlias}.${escFk}`
+    const subquery = `SELECT ${selectedRef} FROM ${qualifiedBaseTable} ${BASE_TABLE_ALIAS} ${innerJoins} WHERE ${condition}`
+    return `${selectedRef} NOT IN (${subquery})`
   }
 
   /**

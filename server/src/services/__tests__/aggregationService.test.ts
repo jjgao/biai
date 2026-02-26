@@ -1178,4 +1178,93 @@ describe('AggregationService - countBy metrics', () => {
     expect(result).toContain('ancestor_0.`age`')
     expect(result).not.toContain('NOT IN')
   })
+
+  test('NOT filter with multi-hop parent counting joins through full relationship path', () => {
+    const multiHopMetadata: any = [
+      {
+        table_name: 'mutations',
+        clickhouse_table_name: 'biai.mutations_raw',
+        relationships: [
+          { foreign_key: 'sample_id', referenced_table: 'samples', referenced_column: 'sample_id', type: 'many-to-one' }
+        ]
+      },
+      {
+        table_name: 'samples',
+        clickhouse_table_name: 'biai.samples_raw',
+        relationships: [
+          { foreign_key: 'patient_id', referenced_table: 'patients', referenced_column: 'patient_id', type: 'many-to-one' }
+        ]
+      },
+      {
+        table_name: 'patients',
+        clickhouse_table_name: 'biai.patients_raw',
+        relationships: []
+      }
+    ]
+
+    // Simulate metricContext for counting mutations by patients (2-hop path)
+    const metricContext = {
+      type: 'parent' as const,
+      parentTable: 'patients',
+      parentColumn: 'patient_id',
+      parentAlias: 'ancestor_1',
+      joins: [
+        {
+          alias: 'ancestor_0',
+          table: 'biai.samples_raw',
+          on: 'base_table.`sample_id` = ancestor_0.`sample_id`'
+        },
+        {
+          alias: 'ancestor_1',
+          table: 'biai.patients_raw',
+          on: 'ancestor_0.`patient_id` = ancestor_1.`patient_id`'
+        }
+      ],
+      pathSegments: [
+        { from_table: 'mutations', via_column: 'sample_id', to_table: 'samples', referenced_column: 'sample_id' },
+        { from_table: 'samples', via_column: 'patient_id', to_table: 'patients', referenced_column: 'patient_id' }
+      ],
+      aliasByTable: {
+        mutations: 'base_table',
+        samples: 'ancestor_0',
+        patients: 'ancestor_1'
+      }
+    }
+
+    const filter = {
+      not: {
+        column: 'hugo_symbol',
+        operator: 'eq' as const,
+        value: 'EGFR',
+        tableName: 'mutations'
+      }
+    }
+
+    const result = callPrivate('buildWhereClause')(
+      [filter],
+      undefined,
+      'mutations',
+      multiHopMetadata,
+      undefined,
+      metricContext,
+      'biai.mutations_raw'
+    )
+
+    // Multi-hop exclusion: the outer reference must be ancestor_0.`patient_id`
+    // (patient_id lives in samples, which is the ancestor_0 join)
+    expect(result).toContain('ancestor_0.`patient_id`')
+
+    // The subquery must join mutations to samples to collect patient_ids
+    expect(result).toContain('NOT IN')
+    expect(result).toContain('FROM biai.mutations_raw')
+    expect(result).toContain('ANY LEFT JOIN biai.samples_raw AS ancestor_0')
+    expect(result).toContain('ancestor_0.`sample_id`')
+
+    // The WHERE condition inside the subquery should NOT have an alias prefix
+    expect(result).toContain("`hugo_symbol` = 'EGFR'")
+    expect(result).not.toContain('base_table.`hugo_symbol`')
+
+    // The subquery must NOT join all the way to patients (patient_id is already in samples)
+    expect(result).not.toContain('biai.patients_raw')
+  })
 })
