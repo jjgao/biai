@@ -13,10 +13,18 @@ interface ChartByTypeParams {
   tableName: string
   columnName: string
   tableColor: string
-  aggregation?: ColumnAggregation
+  /** Aggregation data used for chart type/layout decisions (always the table-level data). */
+  aggregation: ColumnAggregation
+  /** The effective cache key for this chart (may differ from the table default for per-chart overrides). */
   cacheKey: string
   normalizedDisplayType: string
   metaDisplayType?: string
+  /**
+   * Aggregation data passed through to the chart component as `aggregationOverride`.
+   * Must only be set when the aggregation data matches the chart's effective cacheKey.
+   * When undefined, the chart component resolves its own data via context.
+   */
+  aggregationOverrideForComponent?: ColumnAggregation
   countIndicatorOverride?: React.ReactNode
   getViewPreference: (tableName: string, columnName: string, categoryCount: number) => string
   getSurvivalViewPreference: (tableName: string, columnName: string) => 'histogram' | 'km'
@@ -38,19 +46,20 @@ export function getChartByType({
   cacheKey,
   normalizedDisplayType,
   metaDisplayType,
+  aggregationOverrideForComponent,
   countIndicatorOverride,
   getViewPreference,
   getSurvivalViewPreference,
   toggleSurvivalViewPreference,
 }: ChartByTypeParams): ChartByTypeResult | null {
-  if ((normalizedDisplayType === 'categorical' || metaDisplayType === 'survival_status') && (aggregation?.categories || !aggregation)) {
-    const categoryCount = aggregation?.categories?.length ?? 0
+  if ((normalizedDisplayType === 'categorical' || metaDisplayType === 'survival_status') && aggregation.categories) {
+    const categoryCount = aggregation.categories.length
     const viewPref = getViewPreference(tableName, columnName, categoryCount)
     const allowPie = categoryCount <= MAX_PIE_CATEGORIES
 
     if (viewPref === 'table') {
       return {
-        element: <TableViewChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
+        element: <TableViewChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregationOverrideForComponent} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
         gridColumn: 'span 2',
         gridRow: 'span 2',
       }
@@ -58,12 +67,12 @@ export function getChartByType({
 
     if (allowPie) {
       return {
-        element: <PieChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
+        element: <PieChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregationOverrideForComponent} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
       }
     }
 
     return {
-      element: <BarChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
+      element: <BarChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregationOverrideForComponent} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
       gridColumn: 'span 2',
     }
   }
@@ -100,28 +109,28 @@ export function getChartByType({
 
     if (view === 'km') {
       return {
-        element: <SurvivalChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} extraActions={toggleButton} showHistogram={false} />,
+        element: <SurvivalChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregationOverrideForComponent} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} extraActions={toggleButton} showHistogram={false} />,
         gridColumn: 'span 2',
         gridRow: 'span 2',
       }
     }
 
     return {
-      element: <HistogramChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} extraActions={toggleButton} />,
+      element: <HistogramChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregationOverrideForComponent} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} extraActions={toggleButton} />,
       gridColumn: 'span 2',
     }
   }
 
-  if (normalizedDisplayType === 'numeric' && (aggregation?.histogram || !aggregation)) {
+  if (normalizedDisplayType === 'numeric' && aggregation.histogram) {
     return {
-      element: <HistogramChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
+      element: <HistogramChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregationOverrideForComponent} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
       gridColumn: 'span 2',
     }
   }
 
-  if (aggregation?.display_type === 'geographic' && aggregation?.categories) {
+  if (aggregation.display_type === 'geographic' && aggregation.categories) {
     return {
-      element: <MapChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
+      element: <MapChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregationOverrideForComponent} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
       gridColumn: 'span 4',
     }
   }
