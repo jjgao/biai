@@ -13,7 +13,7 @@ interface ChartByTypeParams {
   tableName: string
   columnName: string
   tableColor: string
-  aggregation: ColumnAggregation
+  aggregation?: ColumnAggregation
   cacheKey: string
   normalizedDisplayType: string
   metaDisplayType?: string
@@ -43,8 +43,8 @@ export function getChartByType({
   getSurvivalViewPreference,
   toggleSurvivalViewPreference,
 }: ChartByTypeParams): ChartByTypeResult | null {
-  if ((normalizedDisplayType === 'categorical' || metaDisplayType === 'survival_status') && aggregation.categories) {
-    const categoryCount = aggregation.categories.length
+  if ((normalizedDisplayType === 'categorical' || metaDisplayType === 'survival_status') && (aggregation?.categories || !aggregation)) {
+    const categoryCount = aggregation?.categories?.length ?? 0
     const viewPref = getViewPreference(tableName, columnName, categoryCount)
     const allowPie = categoryCount <= MAX_PIE_CATEGORIES
 
@@ -112,14 +112,14 @@ export function getChartByType({
     }
   }
 
-  if (normalizedDisplayType === 'numeric' && aggregation.histogram) {
+  if (normalizedDisplayType === 'numeric' && (aggregation?.histogram || !aggregation)) {
     return {
       element: <HistogramChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
       gridColumn: 'span 2',
     }
   }
 
-  if (aggregation.display_type === 'geographic' && aggregation.categories) {
+  if (aggregation?.display_type === 'geographic' && aggregation?.categories) {
     return {
       element: <MapChart title={title} tableName={tableName} field={columnName} tableColor={tableColor} aggregationOverride={aggregation} cacheKeyOverride={cacheKey} countIndicatorOverride={countIndicatorOverride} />,
       gridColumn: 'span 4',

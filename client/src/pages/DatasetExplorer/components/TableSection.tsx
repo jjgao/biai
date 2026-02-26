@@ -236,7 +236,7 @@ export function TableSection({
             tableName: table.name,
             columnName: agg.column_name,
             tableColor,
-            aggregation: aggregationForChart ?? agg,
+            aggregation: aggregationForChart,
             cacheKey,
             normalizedDisplayType,
             metaDisplayType,
