@@ -35,10 +35,11 @@ export function useDashboard({ identifier }: UseDashboardArgs) {
   const dashboardInitialized = useRef(false)
   const savedDashboardsInitialized = useRef(false)
 
-  const normalizeDashboardCharts = (charts: Array<{ tableName: string; columnName: string; countByTarget?: string | null; addedAt: string }>) => {
+  const normalizeDashboardCharts = (charts: Array<{ tableName: string; columnName: string; compareColumn?: string; countByTarget?: string | null; addedAt: string }>) => {
     return charts.map(chart => ({
       tableName: chart.tableName,
       columnName: chart.columnName,
+      compareColumn: chart.compareColumn,
       countByTarget: chart.countByTarget ?? null,
       addedAt: chart.addedAt || new Date().toISOString()
     }))

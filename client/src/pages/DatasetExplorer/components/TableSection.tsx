@@ -2,6 +2,7 @@ import React from 'react'
 import { findRelationshipPath } from '../../../utils/filterHelpers'
 import type { ColumnAggregation, Table } from '../types'
 import { getChartByType } from './renderChartByType'
+import { useChartContext } from './ChartContext'
 
 interface TableSectionProps {
   table: Table
@@ -55,6 +56,7 @@ export function TableSection({
   addAllChartsToTable,
   renderTabCountIndicator,
 }: TableSectionProps) {
+  const chartCtx = useChartContext()
   const tableRowCount = primaryAggregation?.total_rows ?? table.rowCount ?? 0
 
   // Calculate maximum path length for transitive relationships (2+ hops only)
@@ -231,6 +233,8 @@ export function TableSection({
           const normalizedDisplayType =
             agg?.normalized_display_type || agg?.display_type || metaDisplayType || ''
 
+          const bivariateColumn = chartCtx.getBivariateSelection(table.name, agg.column_name)
+
           const result = getChartByType({
             title: displayTitle,
             tableName: table.name,
@@ -245,6 +249,7 @@ export function TableSection({
             getViewPreference,
             getSurvivalViewPreference,
             toggleSurvivalViewPreference,
+            bivariateColumn,
           })
 
           if (!result) return null

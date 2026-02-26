@@ -492,4 +492,54 @@ router.get('/:database/tables/:table/aggregations', async (req, res) => {
   }
 })
 
+// Get bivariate aggregation for two categorical columns (database mode)
+router.get('/:database/tables/:table/bivariate', async (req, res) => {
+  try {
+    const { table } = req.params
+    const datasetId = req.query.datasetId as string | undefined
+    const { x, y } = req.query
+
+    if (!x || !y) {
+      return res.status(400).json({ error: 'x and y query parameters are required' })
+    }
+
+    if (!datasetId) {
+      return res.status(400).json({ error: 'datasetId parameter is required for bivariate aggregation' })
+    }
+
+    let filters: Filter[] = []
+    if (req.query.filters) {
+      try {
+        filters = JSON.parse(req.query.filters as string)
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid filters JSON' })
+      }
+    }
+
+    const rawCountBy = typeof req.query.countBy === 'string' ? req.query.countBy : undefined
+    const { config: countByConfig, error: countByError } = parseCountByQuery(rawCountBy)
+    if (countByError) {
+      return res.status(400).json({ error: countByError })
+    }
+
+    const result = await aggregationService.getBivariateAggregation(
+      datasetId,
+      table,
+      x as string,
+      y as string,
+      filters,
+      countByConfig
+    )
+
+    return res.json(result)
+  } catch (error: any) {
+    const status = error?.status || 500
+    console.error('Get bivariate aggregation error:', error)
+    return res.status(status).json({
+      error: status === 400 ? 'Invalid request' : 'Failed to get bivariate aggregation',
+      message: error.message
+    })
+  }
+})
+
 export default router

@@ -215,6 +215,7 @@ export function DashboardView({
                 getViewPreference,
                 getSurvivalViewPreference,
                 toggleSurvivalViewPreference,
+                bivariateColumn: chart.compareColumn,
               })
 
               if (!result) return null

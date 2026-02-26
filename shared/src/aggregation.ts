@@ -60,6 +60,23 @@ export interface SurvivalCurvePoint {
   survival: number
 }
 
+export interface BivariateDataPoint {
+  x: string
+  y: string
+  count: number
+}
+
+export interface BivariateAggregation {
+  x_column: string
+  y_column: string
+  data: BivariateDataPoint[]
+  x_categories: string[]
+  y_categories: string[]
+  total_rows: number
+  metric_type: string
+  sql?: string
+}
+
 /**
  * Configuration describing how a table should aggregate counts.
  * - `rows` (default) counts raw rows

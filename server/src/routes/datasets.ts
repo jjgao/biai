@@ -973,6 +973,49 @@ router.get('/:id/tables/:tableId/columns/:columnName/aggregation', async (req, r
   }
 })
 
+// Get bivariate (two-variable) aggregation for two categorical columns
+router.get('/:id/tables/:tableId/bivariate', async (req, res) => {
+  try {
+    const { x, y } = req.query
+    if (!x || !y) {
+      return res.status(400).json({ error: 'x and y query parameters are required' })
+    }
+
+    let filters: any[] = []
+    if (req.query.filters) {
+      try {
+        filters = JSON.parse(req.query.filters as string)
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid filters JSON' })
+      }
+    }
+
+    const rawCountBy = typeof req.query.countBy === 'string' ? req.query.countBy : undefined
+    const { config: countByConfig, error: countByError } = parseCountByQuery(rawCountBy)
+    if (countByError) {
+      return res.status(400).json({ error: countByError })
+    }
+
+    const result = await aggregationService.getBivariateAggregation(
+      req.params.id,
+      req.params.tableId,
+      x as string,
+      y as string,
+      filters,
+      countByConfig
+    )
+
+    return res.json(result)
+  } catch (error: any) {
+    const status = error?.status || 500
+    console.error('Get bivariate aggregation error:', error)
+    return res.status(status).json({
+      error: status === 400 ? 'Invalid request' : 'Failed to get bivariate aggregation',
+      message: error.message
+    })
+  }
+})
+
 // Get survival curve for a time/status column pair
 router.get('/:id/tables/:tableId/survival', async (req, res) => {
   try {

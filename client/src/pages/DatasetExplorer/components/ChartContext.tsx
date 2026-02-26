@@ -1,6 +1,6 @@
 import React, { createContext, useContext } from 'react'
 import type { Filter } from '../../../utils/filterHelpers'
-import type { ColumnAggregation, ColumnMetadata, HistogramBin, NumericStats, SurvivalCurvePoint, Table } from '../types'
+import type { ColumnAggregation, ColumnMetadata, HistogramBin, NumericStats, SurvivalCurvePoint, BivariateAggregation, Table } from '../types'
 
 export interface ChartContextValue {
   // Aggregation access
@@ -69,6 +69,13 @@ export interface ChartContextValue {
   // Dashboard
   isOnDashboard: (tableName: string, field: string) => boolean
   toggleDashboard: (tableName: string, field: string) => void
+
+  // Bivariate (2-variable) charts
+  getBivariateSelection: (tableName: string, columnName: string) => string | undefined
+  setBivariateSelection: (tableName: string, columnName: string, compareColumn?: string) => void
+  getCategoricalColumns: (tableName: string) => ColumnMetadata[]
+  getBivariateData: (tableName: string, xColumn: string, yColumn: string, cacheKey?: string) => BivariateAggregation | undefined
+  ensureBivariateData: (table: Table, xColumn: string, yColumn: string, cacheKey?: string) => void
 }
 
 const ChartContext = createContext<ChartContextValue | null>(null)
