@@ -14,6 +14,8 @@ export type {
   CountByConfig,
   MetricPathSegment,
   SurvivalCurvePoint,
+  BivariateDataPoint,
+  BivariateAggregation,
 } from 'shared'
 
 import type {
@@ -27,6 +29,8 @@ import type {
   CountByConfig,
   MetricPathSegment,
   SurvivalCurvePoint,
+  BivariateDataPoint,
+  BivariateAggregation,
 } from 'shared'
 
 const BASE_TABLE_ALIAS = 'base_table'
@@ -1411,6 +1415,201 @@ class AggregationService {
     }
 
     return curve
+  }
+
+  /**
+   * Get bivariate (two-variable) aggregation for two categorical columns.
+   *
+   * Groups by both columns and returns cross-tabulated counts.
+   * High-cardinality columns are bucketed to top 10 categories with an "Other" bucket.
+   *
+   * @param datasetId - The dataset ID
+   * @param tableId - The table ID
+   * @param xColumn - X-axis column name
+   * @param yColumn - Y-axis column name
+   * @param filters - Filters to apply
+   * @param countBy - Optional parent counting config
+   * @returns BivariateAggregation with cross-tabulated data
+   */
+  async getBivariateAggregation(
+    datasetId: string,
+    tableId: string,
+    xColumn: string,
+    yColumn: string,
+    filters: Filter[] | Filter = [],
+    countBy?: CountByConfig
+  ): Promise<BivariateAggregation> {
+    const tableResult = await clickhouseClient.query({
+      query: `
+        SELECT table_name, clickhouse_table_name, row_count
+        FROM biai.dataset_tables
+        WHERE dataset_id = {datasetId:String}
+          AND table_id = {tableId:String}
+        LIMIT 1
+      `,
+      query_params: { datasetId, tableId },
+      format: 'JSONEachRow'
+    })
+
+    const tables = await tableResult.json<{ table_name: string; clickhouse_table_name: string; row_count: number }>()
+    if (tables.length === 0) {
+      throw new Error('Table not found')
+    }
+
+    const clickhouseTableName = tables[0].clickhouse_table_name
+    const qualifiedTableName = this.qualifyTableName(clickhouseTableName)
+    let effectiveTableName = tables[0].table_name
+    let tableMetadata: TableMetadata[] | undefined
+
+    // Fetch list columns for filter support
+    const listColumnsResult = await clickhouseClient.query({
+      query: `
+        SELECT column_name
+        FROM biai.dataset_columns
+        WHERE dataset_id = {datasetId:String}
+          AND table_id = {tableId:String}
+          AND is_list_column = true
+      `,
+      query_params: { datasetId, tableId },
+      format: 'JSONEachRow'
+    })
+    const listColumnRecords = await listColumnsResult.json<{ column_name: string }>()
+    const listColumns = new Set(listColumnRecords.map(r => r.column_name))
+
+    // Load table metadata (needed for both regular and parent counting modes)
+    const { metadata, idToNameMap } = await this.loadDatasetTablesMetadata(datasetId)
+    tableMetadata = metadata
+    effectiveTableName = idToNameMap.get(tableId) || effectiveTableName
+
+    const metricContext = this.resolveMetricContext(effectiveTableName, countBy, tableMetadata)
+    const validColumns = await this.getTableColumns(clickhouseTableName)
+
+    // Validate that both columns exist
+    if (!validColumns.has(xColumn)) {
+      throw badRequest(`Column '${xColumn}' not found in table`)
+    }
+    if (!validColumns.has(yColumn)) {
+      throw badRequest(`Column '${yColumn}' not found in table`)
+    }
+
+    const aliasResolver = metricContext.aliasByTable
+      ? (tableName?: string) => {
+          if (!tableName) return undefined
+          return metricContext.aliasByTable?.[tableName]
+        }
+      : undefined
+    const whereClause = this.buildWhereClause(
+      filters,
+      validColumns,
+      effectiveTableName,
+      tableMetadata,
+      aliasResolver,
+      metricContext,
+      clickhouseTableName,
+      listColumns
+    )
+
+    const fromClause = this.buildFromClause(qualifiedTableName, metricContext)
+    const metricAggregation = this.getMetricAggregationExpression(metricContext)
+
+    // Get filtered total count
+    const countQuery = `
+      SELECT ${metricAggregation} AS total_count
+      FROM ${fromClause}
+      WHERE 1=1 ${whereClause}
+    `
+    const countResult = await clickhouseClient.query({ query: countQuery, format: 'JSONEachRow' })
+    const countData = await countResult.json<{ total_count: number }>()
+    const totalRows = countData[0]?.total_count ?? 0
+
+    const xRef = this.columnRef(xColumn)
+    const yRef = this.columnRef(yColumn)
+
+    // Normalize value expressions (same pattern as getCategoricalAggregation)
+    const xNorm = `multiIf(
+      isNull(${xRef}) OR lengthUTF8(trimBoth(toString(${xRef}))) = 0, '(Empty)',
+      lowerUTF8(trimBoth(toString(${xRef}))) = 'n/a', '(N/A)',
+      trimBoth(toString(${xRef}))
+    )`
+    const yNorm = `multiIf(
+      isNull(${yRef}) OR lengthUTF8(trimBoth(toString(${yRef}))) = 0, '(Empty)',
+      lowerUTF8(trimBoth(toString(${yRef}))) = 'n/a', '(N/A)',
+      trimBoth(toString(${yRef}))
+    )`
+
+    // Find top 10 categories for each axis
+    const topXQuery = `
+      SELECT ${xNorm} AS val, ${metricAggregation} AS cnt
+      FROM ${fromClause}
+      WHERE 1=1 ${whereClause}
+      GROUP BY val
+      ORDER BY cnt DESC
+      LIMIT 10
+    `
+    const topYQuery = `
+      SELECT ${yNorm} AS val, ${metricAggregation} AS cnt
+      FROM ${fromClause}
+      WHERE 1=1 ${whereClause}
+      GROUP BY val
+      ORDER BY cnt DESC
+      LIMIT 10
+    `
+
+    const [topXResult, topYResult] = await Promise.all([
+      clickhouseClient.query({ query: topXQuery, format: 'JSONEachRow' }),
+      clickhouseClient.query({ query: topYQuery, format: 'JSONEachRow' }),
+    ])
+
+    const topXRows = await topXResult.json<{ val: string; cnt: number }>()
+    const topYRows = await topYResult.json<{ val: string; cnt: number }>()
+
+    const xCategories = topXRows.map(r => r.val)
+    const yCategories = topYRows.map(r => r.val)
+
+    // Build main GROUP BY query with "Other" bucketing
+    const xCategoryList = xCategories.map(c => `'${c.replace(/'/g, "\\'")}'`).join(', ')
+    const yCategoryList = yCategories.map(c => `'${c.replace(/'/g, "\\'")}'`).join(', ')
+
+    const xBucket = xCategories.length > 0
+      ? `if(${xNorm} IN (${xCategoryList}), ${xNorm}, 'Other')`
+      : xNorm
+    const yBucket = yCategories.length > 0
+      ? `if(${yNorm} IN (${yCategoryList}), ${yNorm}, 'Other')`
+      : yNorm
+
+    const bivariateQuery = `
+      SELECT
+        ${xBucket} AS x,
+        ${yBucket} AS y,
+        ${metricAggregation} AS count
+      FROM ${fromClause}
+      WHERE 1=1 ${whereClause}
+      GROUP BY x, y
+      ORDER BY count DESC
+    `
+
+    const bivariateResult = await clickhouseClient.query({
+      query: bivariateQuery,
+      format: 'JSONEachRow'
+    })
+    const data = await bivariateResult.json<BivariateDataPoint>()
+
+    // Add "Other" to category lists if present in data
+    const hasOtherX = data.some(d => d.x === 'Other') && !xCategories.includes('Other')
+    const hasOtherY = data.some(d => d.y === 'Other') && !yCategories.includes('Other')
+    const finalXCategories = hasOtherX ? [...xCategories, 'Other'] : xCategories
+    const finalYCategories = hasOtherY ? [...yCategories, 'Other'] : yCategories
+
+    return {
+      x_column: xColumn,
+      y_column: yColumn,
+      data,
+      x_categories: finalXCategories,
+      y_categories: finalYCategories,
+      total_rows: totalRows,
+      metric_type: metricContext.type,
+      sql: bivariateQuery,
+    }
   }
 
   /**

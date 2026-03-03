@@ -51,6 +51,11 @@ export function createMockChartContext(overrides: Partial<ChartContextValue> = {
     getSurvivalCurve: vi.fn(() => undefined),
     isOnDashboard: vi.fn(() => false),
     toggleDashboard: vi.fn(),
+    getBivariateSelection: vi.fn(() => undefined),
+    setBivariateSelection: vi.fn(),
+    getCategoricalColumns: vi.fn(() => []),
+    getBivariateData: vi.fn(() => undefined),
+    ensureBivariateData: vi.fn(),
     ...overrides,
   }
 }

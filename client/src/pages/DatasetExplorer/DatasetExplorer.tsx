@@ -6,6 +6,7 @@ import { useViewPreferences } from './hooks/useViewPreferences'
 import { useDashboard } from './hooks/useDashboard'
 import { useFilterState } from './hooks/useFilterState'
 import { useCountBy } from './hooks/useCountBy'
+import { useBivariate } from './hooks/useBivariate'
 import { useDatasetLoader } from './hooks/useDatasetLoader'
 import { ChartProvider } from './components/ChartContext'
 import { ActiveFilters } from './components/ActiveFilters'
@@ -47,6 +48,8 @@ function DatasetExplorer() {
   const filterState = useFilterState({ identifier })
 
   const countBy = useCountBy({ identifier })
+
+  const bivariate = useBivariate({ identifier })
 
   const {
     dashboardCharts, setDashboardCharts,
@@ -238,13 +241,14 @@ function DatasetExplorer() {
   const toggleDashboard = (tableName: string, columnName: string) => {
     const cacheKey = countBy.getEffectiveCacheKeyForChart(tableName, columnName)
     const target = targetFromCacheKey(cacheKey)
+    const compareColumn = bivariate.getBivariateSelection(tableName, columnName)
     if (isOnDashboard(tableName, columnName)) {
       setDashboardCharts(prev =>
         prev.filter(chart =>
           !(chart.tableName === tableName && chart.columnName === columnName && chart.countByTarget === target)
         ))
     } else {
-      setDashboardCharts(prev => [...prev, { tableName, columnName, countByTarget: target, addedAt: new Date().toISOString() }])
+      setDashboardCharts(prev => [...prev, { tableName, columnName, compareColumn, countByTarget: target, addedAt: new Date().toISOString() }])
       loader.ensureAggregationForCacheKey(tableName, cacheKey)
     }
   }
@@ -394,6 +398,17 @@ function DatasetExplorer() {
     getSurvivalCurve: loader.getSurvivalCurve,
     isOnDashboard,
     toggleDashboard,
+    getBivariateSelection: bivariate.getBivariateSelection,
+    setBivariateSelection: bivariate.setBivariateSelection,
+    getCategoricalColumns: (tableName: string) => {
+      const metadata = loader.columnMetadata[tableName]
+      if (!metadata) return []
+      return metadata.filter(col =>
+        col.display_type === 'categorical' && !col.is_hidden
+      )
+    },
+    getBivariateData: loader.getBivariateData,
+    ensureBivariateData: loader.ensureBivariateData,
   }
 
   // ── Render ──────────────────────────────────────────────────────

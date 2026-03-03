@@ -7,6 +7,7 @@ import { TableViewChart } from './TableViewChart'
 import { HistogramChart } from './HistogramChart'
 import { SurvivalChart } from './SurvivalChart'
 import { MapChart } from './MapChart'
+import { StackedBarChart } from './StackedBarChart'
 
 interface ChartByTypeParams {
   title: string
@@ -29,6 +30,8 @@ interface ChartByTypeParams {
   getViewPreference: (tableName: string, columnName: string, categoryCount: number) => string
   getSurvivalViewPreference: (tableName: string, columnName: string) => 'histogram' | 'km'
   toggleSurvivalViewPreference: (tableName: string, columnName: string) => void
+  /** If set, renders a StackedBarChart instead of the univariate chart. */
+  bivariateColumn?: string
 }
 
 interface ChartByTypeResult {
@@ -51,7 +54,17 @@ export function getChartByType({
   getViewPreference,
   getSurvivalViewPreference,
   toggleSurvivalViewPreference,
+  bivariateColumn,
 }: ChartByTypeParams): ChartByTypeResult | null {
+  // If a bivariate comparison is selected, render StackedBarChart instead
+  if (bivariateColumn) {
+    return {
+      element: <StackedBarChart title={title} tableName={tableName} xColumn={columnName} yColumn={bivariateColumn} tableColor={tableColor} cacheKeyOverride={cacheKey} />,
+      gridColumn: 'span 2',
+      gridRow: 'span 2',
+    }
+  }
+
   if ((normalizedDisplayType === 'categorical' || metaDisplayType === 'survival_status') && aggregation.categories) {
     const categoryCount = aggregation.categories.length
     const viewPref = getViewPreference(tableName, columnName, categoryCount)

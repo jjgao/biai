@@ -18,6 +18,8 @@ export type {
   ColumnAggregation,
   SurvivalCurvePoint,
   CountByConfig,
+  BivariateDataPoint,
+  BivariateAggregation,
 } from './aggregation'
 
 // Dashboard types

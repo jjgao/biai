@@ -8,6 +8,7 @@ import { ChartHeader } from './ChartHeader'
 import { CountIndicator } from './CountIndicator'
 import { FilterMenu } from './FilterMenu'
 import { SqlViewButton } from './SqlViewerModal'
+import { CompareColumnButton } from './CompareColumnButton'
 
 export function PieChart({
   title,
@@ -47,6 +48,7 @@ export function PieChart({
   const actionButtons = (
     <>
       <SqlViewButton sql={aggregation?.sql} columnName={field} />
+      <CompareColumnButton tableName={tableName} columnName={field} />
       <button
         type="button"
         onClick={event => {

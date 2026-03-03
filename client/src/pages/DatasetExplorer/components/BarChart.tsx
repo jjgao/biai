@@ -8,6 +8,7 @@ import { ChartHeader } from './ChartHeader'
 import { CountIndicator } from './CountIndicator'
 import { FilterMenu } from './FilterMenu'
 import { SqlViewButton } from './SqlViewerModal'
+import { CompareColumnButton } from './CompareColumnButton'
 
 export function BarChart({
   title,
@@ -48,6 +49,7 @@ export function BarChart({
   const actionButtons = (
     <>
       <SqlViewButton sql={aggregation?.sql} columnName={field} />
+      <CompareColumnButton tableName={tableName} columnName={field} />
       <button
         type="button"
         onClick={event => {

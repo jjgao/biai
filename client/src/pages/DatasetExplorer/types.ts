@@ -3,6 +3,7 @@ import type {
   ColumnAggregation,
   TableRelationship,
   MetricPathSegment,
+  BivariateAggregation,
 } from 'shared'
 
 // Re-export shared types so existing imports from this module continue to work
@@ -14,6 +15,8 @@ export type {
   ColumnAggregation,
   TableRelationship,
   MetricPathSegment,
+  BivariateDataPoint,
+  BivariateAggregation,
 } from 'shared'
 
 // Small categorical sets render better as pie charts; beyond this use bars.
@@ -131,5 +134,12 @@ export type SurvivalCacheEntry = {
   filtersKey: string
   countByKey: string
   statusColumn: string
+  timestamp: number
+}
+
+export type BivariateCacheEntry = {
+  data: BivariateAggregation
+  filtersKey: string
+  countByKey: string
   timestamp: number
 }

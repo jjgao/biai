@@ -13,11 +13,13 @@ import {
   type ColumnMetadata,
   type ColumnAggregation,
   type SurvivalCurvePoint,
+  type BivariateAggregation,
   type Table,
   type Dataset,
   type AncestorOption,
   type AggregationCacheEntry,
   type SurvivalCacheEntry,
+  type BivariateCacheEntry,
 } from '../types'
 
 interface UseDatasetLoaderArgs {
@@ -63,10 +65,12 @@ export function useDatasetLoader({
   const [columnMetadata, setColumnMetadata] = useState<Record<string, ColumnMetadata[]>>({})
   const [aggregations, setAggregations] = useState<Record<string, Record<string, AggregationCacheEntry>>>({})
   const [survivalCurves, setSurvivalCurves] = useState<Record<string, Record<string, SurvivalCacheEntry>>>({})
+  const [bivariateCache, setBivariateCache] = useState<Record<string, Record<string, BivariateCacheEntry>>>({})
   const [baselineAggregations, setBaselineAggregations] = useState<Record<string, ColumnAggregation[]>>({})
   const [ancestorOptions, setAncestorOptions] = useState<Record<string, AncestorOption[]>>({})
 
   const survivalRequests = useRef<Set<string>>(new Set())
+  const bivariateRequests = useRef<Set<string>>(new Set())
 
   // Derived values
   const usesDatabaseAPI = isDatabaseMode ? true : dataset?.database_type === 'connected'
@@ -270,6 +274,97 @@ export function useDatasetLoader({
     const matched = statusColumns.find(col => col.column_name.startsWith(base))
     return (matched || statusColumns[0]).column_name
   }
+
+  // ── Bivariate data helpers ────────────────────────────────────────
+
+  const getBivariateEntryKey = (xColumn: string, yColumn: string, countByKey: string) =>
+    `${xColumn}|${yColumn}|${countByKey}`
+
+  const getBivariateData = (
+    tableName: string,
+    xColumn: string,
+    yColumn: string,
+    cacheKey?: string
+  ): BivariateAggregation | undefined => {
+    const key = cacheKey ?? getCountByCacheKey(tableName)
+    const entryKey = getBivariateEntryKey(xColumn, yColumn, key)
+    const entry = bivariateCache[tableName]?.[entryKey]
+    if (!isCacheEntryFresh(entry, currentFiltersKey)) return undefined
+    return entry?.data
+  }
+
+  const loadBivariateData = async (
+    table: Table,
+    xColumn: string,
+    yColumn: string,
+    cacheKey?: string
+  ) => {
+    const key = cacheKey ?? getCountByCacheKey(table.name)
+    const entryKey = getBivariateEntryKey(xColumn, yColumn, key)
+    const cached = bivariateCache[table.name]?.[entryKey]
+    if (isCacheEntryFresh(cached, currentFiltersKey)) return
+
+    const requestKey = `${table.name}|${entryKey}|${currentFiltersKey}`
+    if (bivariateRequests.current.has(requestKey)) return
+    bivariateRequests.current.add(requestKey)
+
+    try {
+      const params: Record<string, any> = { x: xColumn, y: yColumn }
+      if (filters.length > 0) {
+        params.filters = JSON.stringify(filters)
+      }
+      const selection = countBySelections[table.name]
+      if (selection?.mode === 'parent') {
+        params.countBy = `parent:${selection.targetTable}`
+      }
+
+      const shouldUseDbAPI = isDatabaseMode || dataset?.database_type === 'connected'
+      const dbId = isDatabaseMode ? identifier : dataset?.database_name
+      const datasetId = dataset?.id
+
+      let apiPath: string
+      if (shouldUseDbAPI && dbId) {
+        apiPath = `/databases/${dbId}/tables/${table.id}/bivariate`
+        if (datasetId) {
+          params.datasetId = datasetId
+        }
+      } else {
+        apiPath = `/datasets/${identifier}/tables/${table.id}/bivariate`
+      }
+
+      const response = await api.get(apiPath, { params })
+      setBivariateCache(prev => {
+        const tableCache = prev[table.name] || {}
+        const nextEntry: BivariateCacheEntry = {
+          data: response.data,
+          filtersKey: currentFiltersKey,
+          countByKey: key,
+          timestamp: Date.now()
+        }
+        return {
+          ...prev,
+          [table.name]: { ...tableCache, [entryKey]: nextEntry }
+        }
+      })
+    } catch (error) {
+      console.error('Failed to load bivariate data:', error)
+    } finally {
+      bivariateRequests.current.delete(requestKey)
+    }
+  }
+
+  const ensureBivariateData = useCallback((
+    table: Table,
+    xColumn: string,
+    yColumn: string,
+    cacheKey?: string
+  ) => {
+    const key = cacheKey ?? getCountByCacheKey(table.name)
+    const entryKey = getBivariateEntryKey(xColumn, yColumn, key)
+    const cached = bivariateCache[table.name]?.[entryKey]
+    if (isCacheEntryFresh(cached, currentFiltersKey)) return
+    loadBivariateData(table, xColumn, yColumn, key)
+  }, [currentFiltersKey, getCountByCacheKey, isCacheEntryFresh])
 
   // ── Loading functions ─────────────────────────────────────────────
 
@@ -573,5 +668,7 @@ export function useDatasetLoader({
     ensureSurvivalCurve,
     findSurvivalStatusColumn,
     ensureAggregationForCacheKey,
+    getBivariateData,
+    ensureBivariateData,
   }
 }

@@ -61,9 +61,17 @@ vi.mock('../../services/directoryImportService.js', () => ({
   importFromDirectory: vi.fn()
 }))
 
+// Mock aggregationService
+vi.mock('../../services/aggregationService.js', () => ({
+  default: {
+    getBivariateAggregation: vi.fn()
+  }
+}))
+
 import datasetsRouter from '../datasets.js'
 import datasetService from '../../services/datasetService.js'
 import { importFromDirectory } from '../../services/directoryImportService.js'
+import aggregationService from '../../services/aggregationService.js'
 
 const mockCreateDataset = vi.mocked(datasetService.createDataset)
 const mockListDatasets = vi.mocked(datasetService.listDatasets)
@@ -75,6 +83,7 @@ const mockDeleteDataset = vi.mocked(datasetService.deleteDataset)
 const mockGetDatasetTables = vi.mocked(datasetService.getDatasetTables)
 const mockUpdateTableMetadata = vi.mocked(datasetService.updateTableMetadata)
 const mockUpdateDatasetTimestamp = vi.mocked(datasetService.updateDatasetTimestamp)
+const mockGetBivariateAggregation = vi.mocked(aggregationService.getBivariateAggregation)
 
 const app = express()
 app.use(express.json())
@@ -744,6 +753,179 @@ describe('Datasets API Routes', () => {
 
       expect(response.status).toBe(500)
       expect(response.body.error).toBe('Failed to update table metadata')
+    })
+  })
+
+  describe('GET /api/datasets/:id/tables/:tableId/bivariate', () => {
+    test('should get bivariate aggregation successfully', async () => {
+      const mockResult = {
+        x_column: 'status',
+        y_column: 'type',
+        data: [
+          { x: 'Active', y: 'Primary', count: 50 },
+          { x: 'Active', y: 'Secondary', count: 10 }
+        ],
+        x_categories: ['Active', 'Inactive'],
+        y_categories: ['Primary', 'Secondary'],
+        total_rows: 100,
+        metric_type: 'rows',
+        sql: 'SELECT ...'
+      }
+
+      mockGetBivariateAggregation.mockResolvedValue(mockResult)
+
+      const response = await request(app)
+        .get('/api/datasets/test-id/tables/test-table/bivariate')
+        .query({ x: 'status', y: 'type' })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual(mockResult)
+      expect(mockGetBivariateAggregation).toHaveBeenCalledWith(
+        'test-id',
+        'test-table',
+        'status',
+        'type',
+        [],
+        undefined 
+      )
+    })
+
+    test('should handle bivariate aggregation with filters', async () => {
+      const mockResult = {
+        x_column: 'status',
+        y_column: 'type',
+        data: [{ x: 'Active', y: 'Primary', count: 25 }],
+        x_categories: ['Active'],
+        y_categories: ['Primary'],
+        total_rows: 25,
+        metric_type: 'rows'
+      }
+
+      mockGetBivariateAggregation.mockResolvedValue(mockResult)
+
+      const filters = [{ column: 'group', operator: 'eq', value: 'A' }]
+
+      const response = await request(app)
+        .get('/api/datasets/test-id/tables/test-table/bivariate')
+        .query({ 
+          x: 'status', 
+          y: 'type',
+          filters: JSON.stringify(filters)
+        })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual(mockResult)
+      expect(mockGetBivariateAggregation).toHaveBeenCalledWith(
+        'test-id',
+        'test-table',
+        'status',
+        'type',
+        filters,
+        undefined
+      )
+    })
+
+    test('should handle bivariate aggregation with count-by parameter', async () => {
+      const mockResult = {
+        x_column: 'status',
+        y_column: 'type',
+        data: [{ x: 'Active', y: 'Primary', count: 15 }],
+        x_categories: ['Active'],
+        y_categories: ['Primary'],
+        total_rows: 15,
+        metric_type: 'parent'
+      }
+
+      mockGetBivariateAggregation.mockResolvedValue(mockResult)
+
+      const response = await request(app)
+        .get('/api/datasets/test-id/tables/test-table/bivariate')
+        .query({ 
+          x: 'status', 
+          y: 'type',
+          countBy: 'parent:patients'
+        })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual(mockResult)
+      expect(mockGetBivariateAggregation).toHaveBeenCalledWith(
+        'test-id',
+        'test-table',
+        'status',
+        'type',
+        [],
+        { mode: 'parent', target_table: 'patients' }
+      )
+    })
+
+    test('should return 400 if x parameter is missing', async () => {
+      const response = await request(app)
+        .get('/api/datasets/test-id/tables/test-table/bivariate')
+        .query({ y: 'type' })
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toBe('x and y query parameters are required')
+    })
+
+    test('should return 400 if y parameter is missing', async () => {
+      const response = await request(app)
+        .get('/api/datasets/test-id/tables/test-table/bivariate')
+        .query({ x: 'status' })
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toBe('x and y query parameters are required')
+    })
+
+    test('should return 400 if filters JSON is invalid', async () => {
+      const response = await request(app)
+        .get('/api/datasets/test-id/tables/test-table/bivariate')
+        .query({ 
+          x: 'status', 
+          y: 'type',
+          filters: 'invalid-json'
+        })
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toBe('Invalid filters JSON')
+    })
+
+    test('should return 400 if countBy parameter is invalid', async () => {
+      const response = await request(app)
+        .get('/api/datasets/test-id/tables/test-table/bivariate')
+        .query({ 
+          x: 'status', 
+          y: 'type',
+          countBy: 'invalid-format'
+        })
+
+      expect(response.status).toBe(400)
+      expect(response.body).toHaveProperty('error')
+    })
+
+    test('should handle service errors gracefully', async () => {
+      mockGetBivariateAggregation.mockRejectedValue(new Error('Column not found'))
+
+      const response = await request(app)
+        .get('/api/datasets/test-id/tables/test-table/bivariate')
+        .query({ x: 'status', y: 'type' })
+
+      expect(response.status).toBe(500)
+      expect(response.body.error).toBe('Failed to get bivariate aggregation')
+      expect(response.body.message).toBe('Column not found')
+    })
+
+    test('should handle 400 errors from service correctly', async () => {
+      const error = new Error('Column not found in table')
+      error.status = 400
+      mockGetBivariateAggregation.mockRejectedValue(error)
+
+      const response = await request(app)
+        .get('/api/datasets/test-id/tables/test-table/bivariate')
+        .query({ x: 'status', y: 'missing_column' })
+
+      expect(response.status).toBe(400)
+      expect(response.body.error).toBe('Invalid request')
+      expect(response.body.message).toBe('Column not found in table')
     })
   })
 
