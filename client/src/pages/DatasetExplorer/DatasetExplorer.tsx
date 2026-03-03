@@ -404,7 +404,7 @@ function DatasetExplorer() {
       const metadata = loader.columnMetadata[tableName]
       if (!metadata) return []
       return metadata.filter(col =>
-        (col.display_type === 'categorical' || col.display_type === 'id') && !col.is_hidden
+        col.display_type === 'categorical' && !col.is_hidden
       )
     },
     getBivariateData: loader.getBivariateData,

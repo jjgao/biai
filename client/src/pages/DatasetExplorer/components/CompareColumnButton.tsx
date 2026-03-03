@@ -16,6 +16,13 @@ export function CompareColumnButton({ tableName, columnName }: CompareColumnButt
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Guard: Only show for categorical columns (safety net for future phases)
+  const primaryColumnMetadata = ctx.getColumnMetadata(tableName, columnName)
+  if (!primaryColumnMetadata || 
+      (primaryColumnMetadata.display_type !== 'categorical' && primaryColumnMetadata.display_type !== 'id')) {
+    return null
+  }
+
   const currentSelection = ctx.getBivariateSelection(tableName, columnName)
 
   // Close dropdown on outside click

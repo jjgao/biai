@@ -353,7 +353,7 @@ export function useDatasetLoader({
     }
   }
 
-  const ensureBivariateData = (
+  const ensureBivariateData = useCallback((
     table: Table,
     xColumn: string,
     yColumn: string,
@@ -364,7 +364,7 @@ export function useDatasetLoader({
     const cached = bivariateCache[table.name]?.[entryKey]
     if (isCacheEntryFresh(cached, currentFiltersKey)) return
     loadBivariateData(table, xColumn, yColumn, key)
-  }
+  }, [currentFiltersKey, getCountByCacheKey, isCacheEntryFresh])
 
   // ── Loading functions ─────────────────────────────────────────────
 

@@ -2,11 +2,12 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import request from 'supertest'
 import express from 'express'
 
-const { queryMock, closeMock, datasetMetadataMock, aggregationMock } = vi.hoisted(() => ({
+const { queryMock, closeMock, datasetMetadataMock, aggregationMock, bivariateAggregationMock } = vi.hoisted(() => ({
   queryMock: vi.fn(),
   closeMock: vi.fn(),
   datasetMetadataMock: vi.fn(),
-  aggregationMock: vi.fn()
+  aggregationMock: vi.fn(),
+  bivariateAggregationMock: vi.fn()
 }))
 
 vi.mock('../../config/clickhouse.js', () => ({
@@ -27,7 +28,8 @@ vi.mock('../../services/datasetService.js', () => ({
 
 vi.mock('../../services/aggregationService.js', () => ({
   default: {
-    getTableAggregations: aggregationMock
+    getTableAggregations: aggregationMock,
+    getBivariateAggregation: bivariateAggregationMock
   }
 }))
 
@@ -43,6 +45,7 @@ describe('Databases API Routes', () => {
     closeMock.mockReset()
     datasetMetadataMock.mockReset()
     aggregationMock.mockReset()
+    bivariateAggregationMock.mockReset()
   })
 
   test('GET /api/databases returns non-system databases', async () => {
@@ -113,5 +116,68 @@ describe('Databases API Routes', () => {
     expect(response.status).toBe(400)
     expect(response.body.error).toBe('Invalid filters JSON')
     expect(aggregationMock).not.toHaveBeenCalled()
+  })
+
+  test('GET /api/databases/:db/tables/:table/bivariate returns bivariate aggregation', async () => {
+    const mockResult = {
+      x_column: 'status',
+      y_column: 'type',
+      data: [{ x: 'Active', y: 'Primary', count: 25 }],
+      x_categories: ['Active', 'Inactive'],
+      y_categories: ['Primary', 'Secondary'],
+      total_rows: 50,
+      metric_type: 'rows'
+    }
+
+    bivariateAggregationMock.mockResolvedValue(mockResult)
+
+    const response = await request(app)
+      .get('/api/databases/remote/tables/mutations/bivariate')
+      .query({ 
+        datasetId: 'dataset-1',
+        x: 'status',
+        y: 'type'
+      })
+
+    expect(response.status).toBe(200)
+    expect(response.body).toEqual(mockResult)
+    expect(bivariateAggregationMock).toHaveBeenCalledWith(
+      'dataset-1',
+      'mutations', 
+      'status',
+      'type',
+      [],
+      undefined
+    )
+  })
+
+  test('GET /api/databases/:db/tables/:table/bivariate returns 400 without datasetId', async () => {
+    const response = await request(app)
+      .get('/api/databases/remote/tables/mutations/bivariate')
+      .query({ x: 'status', y: 'type' })
+
+    expect(response.status).toBe(400)
+    expect(response.body.error).toBe('datasetId parameter is required for bivariate aggregation')
+    expect(bivariateAggregationMock).not.toHaveBeenCalled()
+  })
+
+  test('GET /api/databases/:db/tables/:table/bivariate returns 400 without x parameter', async () => {
+    const response = await request(app)
+      .get('/api/databases/remote/tables/mutations/bivariate')
+      .query({ datasetId: 'dataset-1', y: 'type' })
+
+    expect(response.status).toBe(400)
+    expect(response.body.error).toBe('x and y query parameters are required')
+    expect(bivariateAggregationMock).not.toHaveBeenCalled()
+  })
+
+  test('GET /api/databases/:db/tables/:table/bivariate returns 400 without y parameter', async () => {
+    const response = await request(app)
+      .get('/api/databases/remote/tables/mutations/bivariate')
+      .query({ datasetId: 'dataset-1', x: 'status' })
+
+    expect(response.status).toBe(400)
+    expect(response.body.error).toBe('x and y query parameters are required')
+    expect(bivariateAggregationMock).not.toHaveBeenCalled()
   })
 })

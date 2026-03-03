@@ -1268,3 +1268,296 @@ describe('AggregationService - countBy metrics', () => {
     expect(result).not.toContain('biai.patients_raw')
   })
 })
+
+describe('AggregationService - Bivariate Aggregation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const mockBivariateTableData = {
+    table_name: 'samples',
+    clickhouse_table_name: 'biai.samples_abc123',
+    row_count: 100
+  }
+
+  test('getBivariateAggregation throws error for missing table', async () => {
+    // Mock table lookup to return empty
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any)
+
+    await expect(
+      aggregationService.getBivariateAggregation('test_dataset', 'unknown_table', 'col1', 'col2')
+    ).rejects.toThrow('Table not found')
+  })
+
+  test('getBivariateAggregation validates column existence', async () => {
+    // Mock table lookup  
+    mockQuery.mockResolvedValueOnce({ json: async () => [mockBivariateTableData] } as any)
+    // Mock list columns (empty)
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any)
+    // Mock table metadata loading
+    mockQuery.mockResolvedValueOnce({ json: async () => [mockBivariateTableData] } as any)
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any) // relationships
+    // Mock valid columns
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [{ name: 'col1' }, { name: 'other_col' }]
+    } as any)
+
+    await expect(
+      aggregationService.getBivariateAggregation('test_dataset', 'test_table', 'col1', 'missing_col')
+    ).rejects.toThrow("Column 'missing_col' not found in table")
+  })
+
+  test('getBivariateAggregation validates both columns exist', async () => {
+    // Mock table lookup  
+    mockQuery.mockResolvedValueOnce({ json: async () => [mockBivariateTableData] } as any)
+    // Mock list columns (empty)
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any)
+    // Mock table metadata loading
+    mockQuery.mockResolvedValueOnce({ json: async () => [mockBivariateTableData] } as any)
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any) // relationships
+    // Mock valid columns with missing x column
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [{ name: 'col2' }, { name: 'other_col' }]
+    } as any)
+
+    await expect(
+      aggregationService.getBivariateAggregation('test_dataset', 'test_table', 'missing_x', 'col2')
+    ).rejects.toThrow("Column 'missing_x' not found in table")
+  })
+
+  test('getBivariateAggregation returns expected structure with top-10 bucketing', async () => {
+    const mockTableData = [mockBivariateTableData]
+    
+    // Mock table lookup
+    mockQuery.mockResolvedValueOnce({ json: async () => mockTableData } as any)
+    // Mock list columns (empty)
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any)
+    // Mock table metadata loading
+    mockQuery.mockResolvedValueOnce({ json: async () => mockTableData } as any)
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any) // relationships
+    // Mock valid columns
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [{ name: 'status' }, { name: 'type' }]
+    } as any)
+    // Mock total count
+    mockQuery.mockResolvedValueOnce({ json: async () => [{ total_count: 100 }] } as any)
+    // Mock top X categories
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [
+        { val: 'Active', cnt: 60 },
+        { val: 'Inactive', cnt: 25 },
+        { val: 'Pending', cnt: 15 }
+      ]
+    } as any)
+    // Mock top Y categories
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [
+        { val: 'Primary', cnt: 70 },
+        { val: 'Secondary', cnt: 30 }
+      ]
+    } as any)
+    // Mock cross-tabulation data
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [
+        { x: 'Active', y: 'Primary', count: 50 },
+        { x: 'Active', y: 'Secondary', count: 10 },
+        { x: 'Inactive', y: 'Primary', count: 20 },
+        { x: 'Inactive', y: 'Secondary', count: 5 },
+        { x: 'Pending', y: 'Primary', count: 0 },
+        { x: 'Pending', y: 'Secondary', count: 15 }
+      ]
+    } as any)
+
+    const result = await aggregationService.getBivariateAggregation(
+      'test_dataset', 'test_table', 'status', 'type'
+    )
+
+    expect(result).toEqual({
+      x_column: 'status',
+      y_column: 'type',
+      data: [
+        { x: 'Active', y: 'Primary', count: 50 },
+        { x: 'Active', y: 'Secondary', count: 10 },
+        { x: 'Inactive', y: 'Primary', count: 20 },
+        { x: 'Inactive', y: 'Secondary', count: 5 },
+        { x: 'Pending', y: 'Primary', count: 0 },
+        { x: 'Pending', y: 'Secondary', count: 15 }
+      ],
+      x_categories: ['Active', 'Inactive', 'Pending'],
+      y_categories: ['Primary', 'Secondary'],
+      total_rows: 100,
+      metric_type: 'rows',
+      sql: expect.any(String)
+    })
+  })
+
+  test('getBivariateAggregation handles "Other" bucketing for high cardinality', async () => {
+    const mockTableData = [mockBivariateTableData]
+    
+    // Mock the setup calls 
+    mockQuery.mockResolvedValueOnce({ json: async () => mockTableData } as any)
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any) // list columns
+    mockQuery.mockResolvedValueOnce({ json: async () => mockTableData } as any) // metadata
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any) // relationships
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [{ name: 'category' }, { name: 'subcategory' }]
+    } as any) // valid columns
+    mockQuery.mockResolvedValueOnce({ json: async () => [{ total_count: 1000 }] } as any) // total count
+
+    // Mock top 10 X categories (simulating high cardinality)
+    const topXCategories = Array.from({ length: 10 }, (_, i) => ({ 
+      val: `Category${i + 1}`, 
+      cnt: 100 - i * 5 
+    }))
+    mockQuery.mockResolvedValueOnce({ json: async () => topXCategories } as any)
+
+    // Mock top 10 Y categories  
+    const topYCategories = Array.from({ length: 10 }, (_, i) => ({ 
+      val: `SubCategory${i + 1}`, 
+      cnt: 90 - i * 4 
+    }))
+    mockQuery.mockResolvedValueOnce({ json: async () => topYCategories } as any)
+
+    // Mock cross-tabulation with some "Other" categories
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [
+        { x: 'Category1', y: 'SubCategory1', count: 50 },
+        { x: 'Other', y: 'SubCategory1', count: 20 },
+        { x: 'Category1', y: 'Other', count: 15 }
+      ]
+    } as any)
+
+    const result = await aggregationService.getBivariateAggregation(
+      'test_dataset', 'test_table', 'category', 'subcategory'
+    )
+
+    expect(result.x_categories).toHaveLength(11) // 10 top categories + "Other"
+    expect(result.y_categories).toHaveLength(11) // 10 top subcategories + "Other"
+    expect(result.data).toContainEqual({ x: 'Other', y: 'SubCategory1', count: 20 })
+    expect(result.x_categories).toContain('Category1')
+    expect(result.y_categories).toContain('SubCategory1')
+    expect(result.total_rows).toBe(1000)
+  })
+
+  test('getBivariateAggregation works with parent counting mode', async () => {
+    const mockTableData = [{ 
+      table_name: 'samples',
+      clickhouse_table_name: 'biai.samples_abc123',
+      row_count: 100
+    }]
+    
+    const mockMetadata = [
+      {
+        table_name: 'patients',
+        clickhouse_table_name: 'biai.patients_abc123',
+        relationships: []
+      },
+      {
+        table_name: 'samples',
+        clickhouse_table_name: 'biai.samples_abc123', 
+        relationships: [
+          {
+            foreign_key: 'patient_id',
+            referenced_table: 'patients',
+            referenced_column: 'patient_id',
+            type: 'many-to-one'
+          }
+        ]
+      }
+    ]
+
+    // Setup mocks
+    mockQuery.mockResolvedValueOnce({ json: async () => mockTableData } as any) // table lookup
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any) // list columns
+    
+    // Table metadata loading
+    mockQuery.mockResolvedValueOnce({ 
+      json: async () => [
+        { table_id: 'test_table', table_name: 'samples', clickhouse_table_name: 'biai.samples_abc123' },
+        { table_id: 'patients_table', table_name: 'patients', clickhouse_table_name: 'biai.patients_abc123' }
+      ]
+    } as any)
+    mockQuery.mockResolvedValueOnce({ 
+      json: async () => [
+        {
+          table_id: 'test_table',
+          foreign_key: 'patient_id',
+          referenced_table: 'patients',
+          referenced_column: 'patient_id',
+          relationship_type: 'many-to-one'
+        }
+      ]
+    } as any)
+
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [{ name: 'status' }, { name: 'type' }]
+    } as any) // valid columns
+    mockQuery.mockResolvedValueOnce({ json: async () => [{ total_count: 50 }] } as any) // total count (distinct patients)
+    
+    // Top categories with parent counting
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [{ val: 'Active', cnt: 30 }, { val: 'Inactive', cnt: 20 }]
+    } as any)
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [{ val: 'Primary', cnt: 35 }, { val: 'Secondary', cnt: 15 }]
+    } as any)
+    
+    // Cross-tab with parent counting
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [
+        { x: 'Active', y: 'Primary', count: 25 },
+        { x: 'Active', y: 'Secondary', count: 5 },
+        { x: 'Inactive', y: 'Primary', count: 10 },
+        { x: 'Inactive', y: 'Secondary', count: 10 }
+      ]
+    } as any)
+
+    const result = await aggregationService.getBivariateAggregation(
+      'test_dataset',
+      'test_table', 
+      'status',
+      'type',
+      [],
+      { mode: 'parent', target_table: 'patients' }
+    )
+
+    expect(result.metric_type).toBe('parent')
+    expect(result.total_rows).toBe(50) // distinct patients, not total samples
+    expect(result.data).toHaveLength(4) // All combinations accounted for
+
+    // Verify parent counting queries were used (uniq instead of count)
+    const queryCalls = mockQuery.mock.calls.map(call => call[0].query)
+    expect(queryCalls.some(query => query.includes('uniq(') && query.includes('patient_id'))).toBe(true)
+  })
+
+  test('getBivariateAggregation handles empty results gracefully', async () => {
+    const mockTableData = [mockBivariateTableData]
+    
+    // Setup mocks for empty result scenario
+    mockQuery.mockResolvedValueOnce({ json: async () => mockTableData } as any) // table lookup
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any) // list columns
+    // Table metadata loading with proper structure
+    mockQuery.mockResolvedValueOnce({ 
+      json: async () => [
+        { table_id: 'test_table', table_name: 'samples', clickhouse_table_name: 'biai.samples_abc123' }
+      ] 
+    } as any) 
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any) // relationships
+    mockQuery.mockResolvedValueOnce({
+      json: async () => [{ name: 'status' }, { name: 'type' }]
+    } as any) // valid columns
+    mockQuery.mockResolvedValueOnce({ json: async () => [{ total_count: 0 }] } as any) // total count
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any) // top X (empty)
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any) // top Y (empty)  
+    mockQuery.mockResolvedValueOnce({ json: async () => [] } as any) // cross-tab (empty)
+
+    const result = await aggregationService.getBivariateAggregation(
+      'test_dataset', 'test_table', 'status', 'type'
+    )
+
+    expect(result.data).toEqual([])
+    expect(result.x_categories).toEqual([])
+    expect(result.y_categories).toEqual([])
+    expect(result.total_rows).toBe(0)
+  })
+})

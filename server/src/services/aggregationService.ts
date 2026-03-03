@@ -1476,15 +1476,10 @@ class AggregationService {
     const listColumnRecords = await listColumnsResult.json<{ column_name: string }>()
     const listColumns = new Set(listColumnRecords.map(r => r.column_name))
 
-    if (countBy && countBy.mode === 'parent') {
-      const { metadata, idToNameMap } = await this.loadDatasetTablesMetadata(datasetId)
-      tableMetadata = metadata
-      effectiveTableName = idToNameMap.get(tableId) || effectiveTableName
-    } else {
-      const { metadata, idToNameMap } = await this.loadDatasetTablesMetadata(datasetId)
-      tableMetadata = metadata
-      effectiveTableName = idToNameMap.get(tableId) || effectiveTableName
-    }
+    // Load table metadata (needed for both regular and parent counting modes)
+    const { metadata, idToNameMap } = await this.loadDatasetTablesMetadata(datasetId)
+    tableMetadata = metadata
+    effectiveTableName = idToNameMap.get(tableId) || effectiveTableName
 
     const metricContext = this.resolveMetricContext(effectiveTableName, countBy, tableMetadata)
     const validColumns = await this.getTableColumns(clickhouseTableName)
